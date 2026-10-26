@@ -1,0 +1,253 @@
+version: '3.8'
+
+# CONTROL PLANE — Laptop (16GB RAM, iGPU, CPU-only)
+# Target: ~6 GB RAM | Servicios ligeros, UI, API gateway, local LLM 8b
+
+services:
+  # ──────────────────────────────────────────────
+  # INFRASTRUCTURE
+  # ──────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    command: >
+      redis-server
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+        reservations:
+          memory: 512M
+
+  # ──────────────────────────────────────────────
+  # LOCAL LLMs (CPU-only, optimized)
+  # ──────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      - OLLAMA_NUM_GPU_LAYERS=0
+      - OLLAMA_NUM_THREADS=4
+      - OLLAMA_BATCH_SIZE=512
+      - OLLAMA_CONTEXT_SIZE=8192
+      - OLLAMA_FLASH_ATTENTION=0
+      - OLLAMA_USE_MMAP=true
+      - OLLAMA_USE_MLOCK=false
+      - OLLAMA_LOW_VRAM=true
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        reservations:
+          memory: 4G
+    profiles: ["llm"]
+
+  # Pull models on startup (optional, can run manually)
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      ollama pull llama3.1:8b-instruct-q4_K_M &&
+      ollama pull qwen2.5-coder:7b-instruct-q4_K_M &&
+      ollama pull bge-small-en-v1.5
+    profiles: ["setup"]
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  # Embeddings server (TEI CPU)
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    command: >
+      --model-id BAAI/bge-small-en-v1.5
+      --dtype float32
+      --pooling cls
+      --max-client-batch-size 64
+      --port 8080
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ──────────────────────────────────────────────
+  # FASTAPI APP (Gateway + Chief of Staff + Orchestration)
+  # ──────────────────────────────────────────────
+  fastapi_app:
+    build:
+      context: .
+      dockerfile: Dockerfile.fastapi
+      target: laptop
+    environment:
+      - ENVIRONMENT=laptop
+      - TIMEZONE=America/New_York
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=http://ollama:11434
+      - EMBEDDINGS_URL=http://embeddings:8080
+      - DUCKDB_PATH=/data/processed/analytics.duckdb
+      - KUZUDB_PATH=/data/knowledge_graph/kuzu.db
+      - SQLITE_VEC_PATH=/data/processed/vectors.db
+      - SQLITE_META_PATH=/data/processed/meta.db
+      - TAILSCALE_AUTHKEY=${TAILSCALE_AUTHKEY:-}
+      - TAILSCALE_HOSTNAME=nexus-laptop
+    ports:
+      - "8000:8000"   # FastAPI
+      - "8001:8001"   # WebSocket Chief
+    volumes:
+      - ./backend:/app/backend:ro
+      - ./data:/data
+      - ./scripts:/scripts:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      embeddings:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # ──────────────────────────────────────────────
+  # 3D FLOOR FRONTEND (Three.js + Vite)
+  # ──────────────────────────────────────────────
+  threejs_floor:
+    build:
+      context: ./frontend/threejs_floor
+      dockerfile: Dockerfile
+      target: dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/threejs_floor:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8001
+    depends_on:
+      - fastapi_app
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ──────────────────────────────────────────────
+  # CHIEF OF STAFF UI (React + Tailwind + shadcn/ui)
+  # ──────────────────────────────────────────────
+  chief_ui:
+    build:
+      context: ./frontend/chief_of_staff_ui
+      dockerfile: Dockerfile
+      target: dev
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./frontend/chief_of_staff_ui:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8001
+    depends_on:
+      - fastapi_app
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # ──────────────────────────────────────────────
+  # JUPYTERLAB (Research notebooks)
+  # ──────────────────────────────────────────────
+  jupyter:
+    image: quay.io/jupyter/scipy-notebook:python-3.11
+    command: >
+      start-notebook.sh
+      --NotebookApp.token=''
+      --NotebookApp.password=''
+      --NotebookApp.allow_origin='*'
+      --NotebookApp.ip=0.0.0.0
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./research/notebooks:/home/jovyan/work/notebooks
+      - ./research/experiments:/home/jovyan/work/experiments
+      - ./data:/home/jovyan/work/data
+      - ./backend:/home/jovyan/work/backend:ro
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+    profiles: ["research"]
+
+  # ──────────────────────────────────────────────
+  # TAILSCALE (VPN mesh to Oracle VPS)
+  # ──────────────────────────────────────────────
+  tailscale:
+    image: tailscale/tailscale:latest
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTHKEY:-}
+      - TS_HOSTNAME=nexus-laptop
+      - TS_EXTRA_ARGS=--advertise-routes=192.168.0.0/16 --accept-routes
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+    network_mode: host
+    restart: unless-stopped
+    profiles: ["vpn"]
+
+volumes:
+  redis_data:
+  ollama_models:
+  tailscale_state:
+
+networks:
+  default:
+    name: nexus-laptop
+    driver: bridge

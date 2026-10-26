@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-10-26T02:58:28.821494Z",
+  "cycle_id": "cyc_20261026T025828_aae0",
+  "proposals": 2,
+  "validated": 0,
+  "rejected": 2,
+  "winners": [],
+  "outcomes": [
+    {
+      "hypothesis_id": "hyp_1639157a6317",
+      "symbol": "NQ",
+      "entry_kind": "ema_cross",
+      "exit_kind": "fixed_r",
+      "passed": false,
+      "sharpe": -0.108,
+      "max_drawdown": -0.227,
+      "trades": 174,
+      "reasons": [
+        "sharpe",
+        "net_sharpe",
+        "max_drawdown",
+        "profit_factor",
+        "fold_consistency",
+        "param_drift",
+        "monte_carlo_p95_dd",
+        "ruin_prob"
+      ]
+    },
+    {
+      "hypothesis_id": "hyp_47c82071ecef",
+      "symbol": "NQ",
+      "entry_kind": "ema_cross",
+      "exit_kind": "atr_trailing",
+      "passed": false,
+      "sharpe": -1.749,
+      "max_drawdown": -0.5627,
+      "trades": 232,
+      "reasons": [
+        "sharpe",
+        "net_sharpe",
+        "max_drawdown",
+        "profit_factor",
+        "fold_consistency",
+        "param_drift",
+        "monte_carlo_p95_dd",
+        "ruin_prob"
+      ]
+    }
+  ],
+  "errors_logged": 2,
+  "insights_logged": 0,
+  "data_quality_ok": true,
+  "notes": []
+}
