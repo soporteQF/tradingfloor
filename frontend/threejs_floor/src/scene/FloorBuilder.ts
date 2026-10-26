@@ -1,8 +1,16 @@
-/** Builds all floor geometry */
+/** Habbo-style Floor Builder - builds the complete visual floor */
 
 import * as THREE from 'three';
 import { createPlaceholderTexture } from '../utils/assets.js';
-import { css, createHabboTileTexture } from '../utils/pixelArt.js';
+import {
+  createHabboFloorTexture,
+  createZoneFloorTexture,
+  createChiefPodiumTexture,
+  createCorridorTexture,
+  createEntranceTexture,
+  createSouthSupportTexture,
+  ZONE_COLORS,
+} from '../utils/habboTextures.js';
 import {
   buildDesk,
   buildServerRack,
@@ -27,13 +35,10 @@ export interface FloorGeometryParts {
   chiefCenter: THREE.Group;
   chiefCenterMesh: THREE.Mesh;
   corridor: THREE.Group;
-  corridorGroup: THREE.Group;
   corridorMesh: THREE.Mesh;
   entrance: THREE.Group;
-  entranceGroup: THREE.Group;
   entranceMesh: THREE.Mesh;
   southSupport: THREE.Group;
-  southSupportGroup: THREE.Group;
   southSupportMesh: THREE.Mesh;
   zoneMeshes: Map<ZoneKey, THREE.Mesh>;
   props: THREE.Group;
@@ -41,28 +46,7 @@ export interface FloorGeometryParts {
 }
 
 export class FloorBuilder {
-  private zoneTextures: Map<ZoneKey, THREE.Texture> = new Map();
-  private chiefTexture: THREE.Texture;
-  private corridorTexture: THREE.Texture;
-  private entranceTexture: THREE.Texture;
-  private southTexture: THREE.Texture;
-
-  constructor() {
-    // Create placeholder textures (will be replaced by real assets)
-    this.chiefTexture = this.createZoneTexture(0x0d0d12, 0x00d4aa);
-    this.corridorTexture = this.createZoneTexture(0x0d0d12, 0x00d4aa);
-    this.entranceTexture = this.createZoneTexture(0x1a1a2e, 0x2a2a3a);
-    this.southTexture = this.createZoneTexture(0x0d0d12, 0x2a2a3a);
-
-    // Zone textures
-    Object.entries(ZONES).forEach(([key, zone]) => {
-      this.zoneTextures.set(key as any, this.createZoneTexture(zone.color, zone.accent));
-    });
-  }
-
-  private createZoneTexture(baseColor: number, accentColor: number): THREE.Texture {
-    return createPlaceholderTexture(baseColor);
-  }
+  constructor() {}
 
   /** Convert grid coordinates to world coordinates (for Three.js) */
   public gridToScreen(gx: number, gy: number): { x: number; y: number } {
@@ -78,9 +62,7 @@ export class FloorBuilder {
     return { x: screen.x, y: 0, z: screen.y };
   }
 
-  /** Build an isometric shape from getIsoRect corners, lying flat on XZ with UP normals.
-   *  Shape-space Y is NEGATED so that after rotateX(-PI/2) (Y -> -Z) world Z = +screenY,
-   *  matching avatars/lights/camera coordinates. */
+  /** Build an isometric shape from getIsoRect corners, lying flat on XZ with UP normals */
   private isoShape(corners: number[]): THREE.Shape {
     const s = new THREE.Shape();
     s.moveTo(corners[0], -corners[1]);
@@ -91,28 +73,26 @@ export class FloorBuilder {
     return s;
   }
 
-  /** Build a single zone mesh */
+  /** Build a single zone mesh with Habbo-style texture */
   private buildZoneMesh(key: ZoneKey, zone: any, texture: THREE.Texture): THREE.Mesh {
-    const px = zone.x * 64; // TILE_W
-    const py = zone.y * 32; // TILE_H
-    const zw = 16 * 64; // ZONE_SIZE * TILE_W
-    const zh = 16 * 32; // ZONE_SIZE * TILE_H
+    const px = zone.x * 64;
+    const py = zone.y * 32;
+    const zw = 16 * 64;
+    const zh = 16 * 32;
 
-    // Create geometry from isometric rectangle
     const corners = getIsoRect(px, py, zw, zh);
     const shape = this.isoShape(corners);
 
     const geometry = new THREE.ShapeGeometry(shape);
-    geometry.rotateX(-Math.PI / 2); // Lay flat
-    geometry.translate(0, 0.01, 0); // Slightly above ground to avoid z-fighting
+    geometry.rotateX(-Math.PI / 2);
+    geometry.translate(0, 0.01, 0);
 
-    // Unlit material - bright like Habbo floor tiles
+    // Bright unlit material - Habbo style
     const material = new THREE.MeshBasicMaterial({
       map: texture,
       color: 0xffffff,
       side: THREE.DoubleSide,
       depthWrite: true,
-      transparent: false,
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -125,7 +105,7 @@ export class FloorBuilder {
 
   /** Build chief center podium */
   private buildChiefCenterMesh(texture: THREE.Texture): THREE.Mesh {
-    const { x, y, size } = { x: 32, y: 22, size: 12 }; // CHIEF_CENTER
+    const { x, y, size } = { x: 32, y: 22, size: 12 };
     const px = x * 64;
     const py = y * 32;
     const w = size * 64;
@@ -134,9 +114,8 @@ export class FloorBuilder {
     const corners = getIsoRect(px, py, w, h);
     const shape = this.isoShape(corners);
 
-    // Extrude for podium height
     const extrudeSettings = {
-      depth: 8, // Podium height
+      depth: 8,
       bevelEnabled: true,
       bevelThickness: 2,
       bevelSize: 1.5,
@@ -147,24 +126,13 @@ export class FloorBuilder {
     geometry.rotateX(-Math.PI / 2);
     geometry.translate(0, 0, 0);
 
-    // Two materials: base + accent rim
-    const baseMaterial = new THREE.MeshStandardMaterial({
-      color: 0x0d0d12,
-      roughness: 0.3,
-      metalness: 0.7,
-      roughnessMap: null,
-      metalnessMap: null,
+    const baseMaterial = new THREE.MeshBasicMaterial({
+      map: texture,
+      color: 0xffffff,
+      side: THREE.DoubleSide,
     });
 
-    const accentMaterial = new THREE.MeshStandardMaterial({
-      color: 0x00e5ff,
-      emissive: 0x00e5ff,
-      emissiveIntensity: 0.35,
-      roughness: 0.1,
-      metalness: 0.9,
-    });
-
-    const mesh = new THREE.Mesh(geometry, [baseMaterial, accentMaterial]);
+    const mesh = new THREE.Mesh(geometry, baseMaterial);
     mesh.name = 'chief_center';
     mesh.position.y = 0;
     mesh.castShadow = false;
@@ -175,24 +143,23 @@ export class FloorBuilder {
 
   /** Build main corridor */
   private buildCorridorMesh(texture: THREE.Texture): THREE.Mesh {
-    const y = 24; // CORRIDOR_Y
+    const y = 24;
     const px = 0;
     const py = y * 32;
-    const w = 80 * 64; // GRID_W * TILE_W
-    const h = 4 * 32; // CORRIDOR_W * TILE_H
+    const w = 80 * 64;
+    const h = 4 * 32;
 
     const corners = getIsoRect(px, py, w, h);
     const shape = this.isoShape(corners);
 
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);
-    geometry.translate(0, 0.005, 0); // Slightly above zones
+    geometry.translate(0, 0.005, 0);
 
     const material = new THREE.MeshBasicMaterial({
       map: texture,
       color: 0xffffff,
       side: THREE.DoubleSide,
-      transparent: false,
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -205,7 +172,7 @@ export class FloorBuilder {
 
   /** Build entrance */
   private buildEntranceMesh(texture: THREE.Texture): THREE.Mesh {
-    const { x, y, w, h } = { x: 30, y: 0, w: 20, h: 6 }; // ENTRANCE
+    const { x, y, w, h } = { x: 30, y: 0, w: 20, h: 6 };
     const px = x * 64;
     const py = y * 32;
     const ww = w * 64;
@@ -233,11 +200,11 @@ export class FloorBuilder {
 
   /** Build south support area */
   private buildSouthSupportMesh(texture: THREE.Texture): THREE.Mesh {
-    const y = 48; // SOUTH_SUPPORT_Y
+    const y = 48;
     const px = 0;
     const py = y * 32;
     const w = 80 * 64;
-    const h = (60 - y) * 32; // GRID_H - y
+    const h = (60 - y) * 32;
 
     const corners = getIsoRect(px, py, w, h);
     const shape = this.isoShape(corners);
@@ -250,7 +217,7 @@ export class FloorBuilder {
       map: texture,
       color: 0xffffff,
       side: THREE.DoubleSide,
-    });
+    })
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'south_support';
@@ -264,30 +231,20 @@ export class FloorBuilder {
     const group = new THREE.Group();
     group.name = 'corridor_arrows';
 
-    const y = 24; // CORRIDOR_Y
+    const y = 24;
     const arrowMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00d4aa,
+      color: 0x00ff88,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.6,
       depthWrite: false,
+      side: THREE.DoubleSide,
     });
 
-    for (let i = 0; i < 80; i += 4) { // GRID_W = 80
+    for (let i = 0; i < 80; i += 4) {
       const screen1 = this.gridToScreen(i, y + 1);
-      const screen2 = this.gridToScreen(i, y + 3); // CORRIDOR_W - 1
+      const screen2 = this.gridToScreen(i, y + 3);
       const midX = (screen1.x + screen2.x) / 2;
       const midY = (screen1.y + screen2.y) / 2;
-
-      // Arrow geometry (simple triangle)
-      const arrowGeo = new THREE.BufferGeometry();
-      const vertices = new Float32Array([
-        midX - 8, 0.01, midY,
-        midX, 0.01, midY - 4,
-        midX + 8, 0.01, midY,
-        midX, 0.01, midY - 4,
-        midX, 0.01, midY + 4,
-      ]);
-      arrowGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
 
       const arrow = new THREE.Mesh(
         new THREE.ShapeGeometry(new THREE.Shape()
@@ -297,7 +254,7 @@ export class FloorBuilder {
           .lineTo(0, -4)
           .lineTo(0, 4)
         ),
-        new THREE.MeshBasicMaterial({ color: 0x00d4aa, transparent: true, opacity: 0.4, depthWrite: false })
+        arrowMaterial
       );
       arrow.rotation.x = -Math.PI / 2;
       arrow.position.set(midX, 0.015, midY);
@@ -329,11 +286,8 @@ export class FloorBuilder {
 
     const zones = params.zones;
     Object.entries(zones).forEach(([key, zone]: [string, any]) => {
-      const texCanvas = createHabboTileTexture(
-        zone.color,
-        zone.color ^ 0x222222,
-        '#ffffff22', '#00000044'
-      );
+      const zoneColor = ZONE_COLORS[key as keyof typeof ZONE_COLORS];
+      const texCanvas = createZoneFloorTexture(zoneColor.floor, zoneColor.accent);
       const texture = new THREE.CanvasTexture(texCanvas);
       texture.magFilter = THREE.NearestFilter;
       texture.minFilter = THREE.NearestFilter;
@@ -348,20 +302,19 @@ export class FloorBuilder {
     const propsGroup = new THREE.Group();
     propsGroup.name = 'props';
 
-    /** Place a sprite prop at world grid coords. */
+    /** Place a sprite prop at world grid coords */
     const placeProp = (kind: string, gx: number, gy: number, variant?: string): void => {
       const pos = this.gridToWorld(gx, gy);
       let obj: THREE.Group | THREE.Mesh;
       switch (kind) {
-        case 'desk': obj = buildDesk(variant as any, 2); break;
-        case 'rack': obj = buildServerRack('blue'); break;
+        case 'desk': obj = buildDesk(variant as any); break;
+        case 'rack': obj = buildServerRack(); break;
         case 'plant': obj = buildPlant(); break;
         case 'sofa': obj = buildSofa(); break;
         case 'console': obj = buildCommandConsole(0x00e5ff); break;
-        case 'dome': obj = buildHoloDome(0xe052ff); break;
+        case 'dome': obj = buildHoloDome(0xbd00ff); break;
         default: return;
       }
-      // Offset so it sits centered on the grid cell, floating slightly
       obj.position.set(pos.x, 4, pos.z);
       obj.renderOrder = Math.round(pos.z / 8) + 20;
       propsGroup.add(obj);
@@ -376,7 +329,7 @@ export class FloorBuilder {
       propsGroup.add(wall);
     };
 
-    // Per-zone prop plans (local coords within the 16x16 zone)
+    // Per-zone prop plans
     const zonePlans: Record<string, Array<{ kind: string; lx: number; ly: number; variant?: string }>> = {
       research: [
         { kind: 'console', lx: 8, ly: 8 },
@@ -426,16 +379,25 @@ export class FloorBuilder {
         placeProp(p.kind, zone.x + p.lx, zone.y + p.ly, p.variant);
       });
 
-      // Zone walls around the perimeter (just outside the zone)
+      // Zone walls around perimeter
       const zx = zone.x; const zy = zone.y;
-      const accent = zone.accent;
-      placeWall(zx + 8, zy - 1, accent, 0);
-      placeWall(zx + 8, zy + 17, accent, 0);
-      placeWall(zx - 1, zy + 8, accent, Math.PI / 2);
-      placeWall(zx + 17, zy + 8, accent, Math.PI / 2);
+      const accentHex = ZONE_COLORS[key as keyof typeof ZONE_COLORS].accent;
+      const accentNum = parseInt(accentHex.replace('#', ''), 16);
+      const placeWall = (gx: number, gy: number, rotY = 0): void => {
+        const pos = this.gridToWorld(gx, gy);
+        const wall = buildZoneWall(accentNum, 18);
+        wall.position.set(pos.x, 2, pos.z);
+        wall.rotation.y = rotY;
+        wall.renderOrder = Math.round(pos.z / 8) + 30;
+        propsGroup.add(wall);
+      };
+      placeWall(zx + 8, zy - 1, 0);
+      placeWall(zx + 8, zy + 17, 0);
+      placeWall(zx - 1, zy + 8, Math.PI / 2);
+      placeWall(zx + 17, zy + 8, Math.PI / 2);
 
-      // Video wall along the South edge of each zone
-      const vw = buildVideoWall('blue' as any, accent, 14);
+      // Video wall
+      const vw = buildVideoWall('blue' as any, accentNum, 14);
       const vwPos = this.gridToWorld(zx + 8, zy - 1);
       vw.position.set(vwPos.x, 2, vwPos.z);
       vw.rotation.y = 0;
@@ -444,42 +406,58 @@ export class FloorBuilder {
     });
 
     // Chief center
-    const chiefCenterMesh = this.buildChiefCenterMesh(createPlaceholderTexture(0x0d0d12));
+    const chiefCanvas = createChiefPodiumTexture();
+    const chiefTexture = new THREE.CanvasTexture(chiefCanvas);
+    chiefTexture.magFilter = THREE.NearestFilter;
+    chiefTexture.minFilter = THREE.NearestFilter;
+    const chiefCenterMesh = this.buildChiefCenterMesh(chiefTexture);
     const chiefCenterGroup = new THREE.Group();
     chiefCenterGroup.name = 'chief_center';
     chiefCenterGroup.add(chiefCenterMesh);
 
-    // Holographic rings above the Chief podium
+    // Holographic rings above Chief podium
     const chiefWorld = this.gridToWorld(CHIEF_POS.x, CHIEF_POS.y);
     const holoRings = buildHoloRings();
     holoRings.group.position.set(chiefWorld.x, 0, chiefWorld.z);
     holoRings.group.renderOrder = 40;
     propsGroup.add(holoRings.group);
 
-    // Knowledge-graph holo-net across the alpha zone floor
+    // Knowledge-graph holo-net
     const holoNet = buildHoloNet({
       gridToWorld: this.gridToWorld.bind(this),
-    }, ZONES.alpha.x, ZONES.alpha.y, ZONES.alpha.accent);
+    }, ZONES.alpha.x, ZONES.alpha.y, 0xbd00ff);
     holoNet.traverse(child => {
       if (child instanceof THREE.Mesh) { child.renderOrder = 15; }
     });
     propsGroup.add(holoNet);
 
-    // Corridor / entrance / south support with tech floor texture
+    // Corridor / entrance / south support
     const corridorGroup = new THREE.Group();
     corridorGroup.name = 'corridor';
-    const corridorMesh = this.buildCorridorMesh(createPlaceholderTexture(0x0d0d12));
+    const corridorCanvas = createCorridorTexture();
+    const corridorTexture = new THREE.CanvasTexture(corridorCanvas);
+    corridorTexture.magFilter = THREE.NearestFilter;
+    corridorTexture.minFilter = THREE.NearestFilter;
+    const corridorMesh = this.buildCorridorMesh(corridorTexture);
     corridorGroup.add(corridorMesh);
     corridorGroup.add(this.buildCorridorArrows());
 
     const entranceGroup = new THREE.Group();
     entranceGroup.name = 'entrance';
-    const entranceMesh = this.buildEntranceMesh(createPlaceholderTexture(0x1a1a2e));
+    const entranceCanvas = createEntranceTexture();
+    const entranceTexture = new THREE.CanvasTexture(entranceCanvas);
+    entranceTexture.magFilter = THREE.NearestFilter;
+    entranceTexture.minFilter = THREE.NearestFilter;
+    const entranceMesh = this.buildEntranceMesh(entranceTexture);
     entranceGroup.add(entranceMesh);
 
     const southSupportGroup = new THREE.Group();
     southSupportGroup.name = 'south_support';
-    const southSupportMesh = this.buildSouthSupportMesh(createPlaceholderTexture(0x0d0d12));
+    const southCanvas = createSouthSupportTexture();
+    const southTexture = new THREE.CanvasTexture(southCanvas);
+    southTexture.magFilter = THREE.NearestFilter;
+    southTexture.minFilter = THREE.NearestFilter;
+    const southSupportMesh = this.buildSouthSupportMesh(southTexture);
     southSupportGroup.add(southSupportMesh);
 
     return {
@@ -487,13 +465,10 @@ export class FloorBuilder {
       chiefCenter: chiefCenterGroup,
       chiefCenterMesh: chiefCenterMesh,
       corridor: corridorGroup,
-      corridorGroup: corridorGroup,
       corridorMesh: corridorMesh,
       entrance: entranceGroup,
-      entranceGroup: entranceGroup,
       entranceMesh: entranceMesh,
       southSupport: southSupportGroup,
-      southSupportGroup: southSupportGroup,
       southSupportMesh: southSupportMesh,
       zoneMeshes,
       props: propsGroup,

@@ -1,30 +1,8 @@
-/** Pixel-art props builder: Habbo-style furniture as flat iso sprites.
- *  Everything renders as a 2D iso sprite lying flat on the XZ floor plane,
- *  exactly like Habbo renders its furniture. Nothing vertical is visible from
- *  a straight-down camera anyway, so pre-drawn iso sprites are the authentic
- *  approach. */
+/** Habbo-style Props - pixel art sprites as flat quads */
 
 import * as THREE from 'three';
-import {
-  isoBox,
-  isoEllipse,
-  drawChart,
-  drawLedGrid,
-  css,
-  createHabboTileTexture,
-  createTechFloorTexture,
-  createWallTexture,
-  createMonitorTexture,
-  createServerRackTexture,
-} from '../utils/pixelArt.js';
 
-export interface PropContext {
-  gridToWorld: (gx: number, gy: number) => { x: number; y: number; z: number };
-}
-
-/** Build a flat sprite quad lying on the floor plane.
- *  Canvas top edge points toward screen-up (+z world). Sorted by renderOrder
- *  for painter's-algorithm iso layering (higher z drawn on top). */
+/** Build a flat sprite quad lying on the floor plane */
 export function spriteQuad(canvas: HTMLCanvasElement,
   worldW: number, worldH: number,
   x: number, y: number, z: number, renderOrder = 0): THREE.Mesh {
@@ -45,322 +23,398 @@ export function spriteQuad(canvas: HTMLCanvasElement,
   return mesh;
 }
 
-/** Trading desk with 1-3 glowing monitors + chair. Canvas ~112x80 iso. */
-export function buildDesk(monitorVariant: 'green' | 'blue' | 'purple' = 'green',
-  monitors = 2): THREE.Group {
-  const g = new THREE.Group();
+/** Trading desk with monitors - Habbo style */
+export function buildDesk(variant: 'green' | 'blue' | 'purple' = 'green'): THREE.Group {
+  const dg = new THREE.Group();
   const cvs = document.createElement('canvas');
-  cvs.width = 112; cvs.height = 80;
+  cvs.width = 128; cvs.height = 96;
   const ctx = cvs.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
-  // Shadow
-  ctx.fillStyle = '#00000055';
-  ctx.beginPath(); ctx.ellipse(56, 72, 22, 4, 0, 0, Math.PI * 2); ctx.fill();
+  const colors = {
+    green: { desk: '#2d4a2d', screen: '#00ff88', frame: '#1a3a1a' },
+    blue:  { desk: '#1a2a4a', screen: '#4488ff', frame: '#1a1a3a' },
+    purple:{ desk: '#3a1a4a', screen: '#aa66ff', frame: '#2a1a3a' },
+  }[variant];
 
-  // Desk body (iso box, W=68 D=44 h=14) center (56, 62)
-  isoBox(ctx, 56, 62, 68, 44, 14, '#1e1e2a', '#14141c', '#101016');
+  ctx.fillStyle = '#00000044';
+  ctx.beginPath(); ctx.ellipse(64, 84, 28, 5, 0, 0, Math.PI * 2); ctx.fill();
 
-  // Accent strip along front edge
-  ctx.fillStyle = '#00e5ff44';
-  ctx.fillRect(42, 66, 28, 4);
+  ctx.fillStyle = colors.desk;
+  ctx.beginPath();
+  ctx.moveTo(64, 28);
+  ctx.lineTo(100, 44);
+  ctx.lineTo(64, 60);
+  ctx.lineTo(28, 44);
+  ctx.closePath();
+  ctx.fill();
 
-  // Monitors
-  const screenW = 12, screenH = 18;
-  for (let i = 0; i < monitors; i++) {
-    const mx = i === 0 ? 40 : 72;
-    const my = 36;
-    // monitor iso box (W=22 D=12 h=26)
-    isoBox(ctx, mx, my, 22, 12, 26, '#14141c', '#0d0d12', '#0a1018');
-    // screen on right face (sideR quad area)
-    const sx = mx + 10; const sy = my + 6;
-    ctx.fillStyle = '#04150d';
-    ctx.fillRect(sx, sy, screenW, screenH);
-    drawChart(ctx, sx + 1, sy + 2, screenW - 2, screenH - 4,
-      monitorVariant === 'green' ? '#00ff88' :
-        monitorVariant === 'blue' ? '#3aa5ff' : '#aa66ff');
-  }
+  ctx.fillStyle = '#1a2a1a';
+  ctx.beginPath();
+  ctx.moveTo(28, 44);
+  ctx.lineTo(28, 76);
+  ctx.lineTo(100, 92);
+  ctx.lineTo(100, 60);
+  ctx.closePath();
+  ctx.fill();
 
-  // Chair behind desk (top = screen-up direction)
-  isoBox(ctx, 56, 22, 24, 24, 12, '#22222e', '#161620', '#0f0f18');
-
-  g.add(spriteQuad(cvs, 68, 52, 0, 4, 0, 10));
-  return g;
-}
-
-/** Server rack with blinking LED front. Canvas 56x112 iso. */
-export function buildServerRack(ledAccent: 'blue' | 'green' | 'purple' = 'blue'): THREE.Group {
-  const g = new THREE.Group();
-  const cvs = document.createElement('canvas');
-  cvs.width = 56; cvs.height = 112;
-  const ctx = cvs.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-
-  ctx.fillStyle = '#00000077';
-  ctx.beginPath(); ctx.ellipse(28, 100, 14, 3, 0, 0, Math.PI * 2); ctx.fill();
-
-  // Rack iso box (W=40 D=10 h=66)
-  isoBox(ctx, 28, 92, 40, 10, 66, '#14141c', '#0d0d12', '#0a0a10');
-
-  // LED grid on right face area
-  const lx = 38; const ly = 38;
-  drawLedGrid(ctx, lx + 2, ly + 6, 10, 56,
-    ledAccent === 'blue' ? '#3aa5ff' :
-      ledAccent === 'green' ? '#00ff88' : '#bd00ff',
-    ledAccent === 'blue' ? '#004488' :
-      ledAccent === 'green' ? '#006622' : '#660088');
-
-  g.add(spriteQuad(cvs, 44, 72, 0, 2, 0, 10));
-  return g;
-}
-
-/** Holographic dome: base ellipse + wireframe dome arcs + core glow. Canvas 112x88. */
-export function buildHoloDome(accent: number): THREE.Group {
-  const g = new THREE.Group();
-  const cvs = document.createElement('canvas');
-  cvs.width = 112; cvs.height = 88;
-  const ctx = cvs.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-
-  const accentCss = css(accent);
-
-  // Shadow
-  ctx.fillStyle = '#00000055';
-  ctx.beginPath(); ctx.ellipse(56, 74, 30, 4, 0, 0, Math.PI * 2); ctx.fill();
-
-  // Base ring
-  isoEllipse(ctx, 56, 70, 30, 10, '#14141c');
-  ctx.strokeStyle = '#1e1e2a';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.ellipse(56, 70, 30, 10, 0, 0, Math.PI * 2); ctx.stroke();
-
-  // Dome wireframe arcs (purple/cyan)
-  ctx.strokeStyle = accentCss;
-  ctx.lineWidth = 1.5;
-  ctx.globalAlpha = 0.5;
-  for (let r = 10; r <= 32; r += 11) {
-    ctx.beginPath(); ctx.ellipse(56, 40, r, r * 0.55, 0, 0, Math.PI); ctx.stroke();
-  }
-  for (let a = 0; a < 4; a++) {
-    const ang = (a / 4) * Math.PI;
-    const rx = 30 * Math.cos(ang); const ry = 16 * Math.sin(ang);
+  const screenColor = variant === 'green' ? '#00ff88' : variant === 'blue' ? '#4488ff' : '#aa66ff';
+  for (let i = 0; i < 2; i++) {
+    const mx = [44, 84][i];
+    ctx.fillStyle = '#1a1a2a';
     ctx.beginPath();
-    ctx.moveTo(56 + rx, 40);
-    ctx.bezierCurveTo(56 + rx * 0.4, 40 - ry, 56 - rx * 0.4, 40 - ry, 56 - rx, 40);
+    ctx.moveTo(mx - 14, 20);
+    ctx.lineTo(mx + 14, 28);
+    ctx.lineTo(mx + 14, 52);
+    ctx.lineTo(mx - 14, 44);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#0a1a0a';
+    ctx.fillRect(mx - 11, 24, 22, 22);
+    ctx.strokeStyle = variant === 'green' ? '#00ff88' : variant === 'blue' ? '#4488ff' : '#aa66ff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(mx - 9, 38);
+    ctx.lineTo(mx - 5, 32);
+    ctx.lineTo(mx, 35);
+    ctx.lineTo(mx + 5, 30);
+    ctx.lineTo(mx + 9, 26);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = '#1a2a1a';
+  ctx.beginPath();
+  ctx.moveTo(44, 76);
+  ctx.lineTo(84, 92);
+  ctx.lineTo(84, 108);
+  ctx.lineTo(44, 92);
+  ctx.closePath();
+  ctx.fill();
+
+  const dg2 = new THREE.Group();
+  dg2.add(spriteQuad(cvs, 80, 72, 0, 4, 0, 10));
+  return dg2;
+}
+
+/** Server rack */
+export function buildServerRack(): THREE.Group {
+  const rg = new THREE.Group();
+  const cvs = document.createElement('canvas');
+  cvs.width = 64; cvs.height = 128;
+  const ctx = cvs.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+
+  ctx.fillStyle = '#00000044';
+  ctx.beginPath(); ctx.ellipse(32, 116, 14, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.moveTo(10, 12);
+  ctx.lineTo(54, 20);
+  ctx.lineTo(54, 116);
+  ctx.lineTo(10, 108);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#141414';
+  ctx.beginPath();
+  ctx.moveTo(54, 20);
+  ctx.lineTo(54, 116);
+  ctx.lineTo(64, 108);
+  ctx.lineTo(64, 20);
+  ctx.closePath();
+  ctx.fill();
+
+  for (let row = 0; row < 12; row++) {
+    for (let col = 0; col < 3; col++) {
+      if (Math.random() > 0.3) {
+        ctx.fillStyle = Math.random() > 0.5 ? '#00ff88' : '#ffaa00';
+        ctx.fillRect(56 + col * 3, 24 + row * 8, 2, 2);
+      }
+    }
+  }
+
+  ctx.strokeStyle = '#333333';
+  ctx.lineWidth = 1;
+  for (let y = 20; y < 116; y += 8) {
+    ctx.beginPath();
+    ctx.moveTo(12, y);
+    ctx.lineTo(52, y + 8);
+    ctx.stroke();
+  }
+
+  const rg2 = new THREE.Group();
+  rg2.add(spriteQuad(cvs, 48, 96, 0, 4, 0, 10));
+  return rg2;
+}
+
+/** Holographic dome */
+export function buildHoloDome(accent: number): THREE.Group {
+  const dg = new THREE.Group();
+  const cvs = document.createElement('canvas');
+  cvs.width = 128; cvs.height = 96;
+  const ctx = cvs.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+
+  const accentCss = `#${accent.toString(16).padStart(6, '0')}`;
+
+  ctx.fillStyle = '#00000044';
+  ctx.beginPath(); ctx.ellipse(64, 84, 30, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = '#333333';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(64, 70, 36, 12, 0, 0, Math.PI * 2); ctx.stroke();
+
+  ctx.strokeStyle = `#${accent.toString(16).padStart(6, '0')}`;
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.6;
+  for (let r = 8; r <= 36; r += 10) {
+    ctx.beginPath(); ctx.ellipse(64, 38, r, r * 0.5, 0, 0, Math.PI); ctx.stroke();
+  }
+  for (let a = 0; a < 5; a++) {
+    const ang = (a / 5) * Math.PI;
+    const rx = 36 * Math.cos(ang);
+    ctx.beginPath();
+    ctx.moveTo(64 + rx, 38);
+    ctx.bezierCurveTo(64 + rx * 0.3, 38 - 20, 64 - rx * 0.3, 38 - 20, 64 - rx, 38);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
 
-  // Core glow
-  const grad = ctx.createRadialGradient(56, 30, 0, 56, 30, 10);
-  grad.addColorStop(0, accentCss);
+  const grad = ctx.createRadialGradient(64, 38, 0, 64, 38, 12);
+  grad.addColorStop(0, `#${accent.toString(16).padStart(6, '0')}`);
   grad.addColorStop(1, '#00000000');
   ctx.fillStyle = grad;
-  isoEllipse(ctx, 56, 30, 10, 8, '#ffffff');
-  ctx.fill();
+  ctx.beginPath(); ctx.ellipse(64, 38, 12, 6, 0, 0, Math.PI * 2); ctx.fill();
 
-  g.add(spriteQuad(cvs, 88, 60, 0, 6, 0, 10));
-  return g;
+  const dg2 = new THREE.Group();
+  dg2.add(spriteQuad(cvs, 96, 72, 0, 6, 0, 10));
+  return dg2;
 }
 
-/** Futuristic command console: half-ellipse desk + big curved screen behind. Canvas 130x96. */
+/** Command console */
 export function buildCommandConsole(accent: number): THREE.Group {
-  const g = new THREE.Group();
+  const cg = new THREE.Group();
   const cvs = document.createElement('canvas');
-  cvs.width = 130; cvs.height = 96;
+  cvs.width = 144; cvs.height = 104;
   const ctx = cvs.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
-  const accentCss = css(accent);
+  const accentCss = `#${accent.toString(16).padStart(6, '0')}`;
 
-  ctx.fillStyle = '#00000055';
-  ctx.beginPath(); ctx.ellipse(65, 92, 34, 5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#00000044';
+  ctx.beginPath(); ctx.ellipse(72, 96, 38, 5, 0, 0, Math.PI * 2); ctx.fill();
 
-  // Console base: half-ellipse
-  ctx.fillStyle = '#14141c';
+  ctx.fillStyle = '#1a1a2a';
   ctx.beginPath();
-  ctx.ellipse(65, 80, 44, 14, 0, Math.PI, 2 * Math.PI);
-  ctx.fill();
-  ctx.fillStyle = '#1e1e2a';
-  ctx.beginPath();
-  ctx.ellipse(65, 82, 38, 10, 0, Math.PI, 2 * Math.PI);
+  ctx.ellipse(72, 76, 50, 16, 0, Math.PI, 2 * Math.PI);
   ctx.fill();
 
-  // Top glow strip
-  ctx.fillStyle = accentCss;
-  ctx.fillRect(30, 70, 70, 4);
+  ctx.fillStyle = `#${accent.toString(16).padStart(6, '0')}`;
+  ctx.fillRect(32, 64, 80, 4);
 
-  // Big screen behind console
-  ctx.fillStyle = '#040d1a';
-  ctx.fillRect(32, 28, 66, 36);
-  ctx.strokeStyle = accentCss;
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(28, 24, 88, 44);
+  ctx.strokeStyle = `#${accent.toString(16).padStart(6, '0')}`;
   ctx.lineWidth = 2;
-  ctx.strokeRect(32, 28, 66, 36);
-  drawChart(ctx, 36, 36, 58, 24, '#3aa5ff');
+  ctx.strokeRect(28, 24, 88, 44);
 
-  // Screen top border accent
-  ctx.fillStyle = accentCss;
-  ctx.fillRect(30, 24, 70, 4);
+  ctx.strokeStyle = '#00ff88';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(32, 52);
+  ctx.lineTo(44, 40);
+  ctx.lineTo(56, 44);
+  ctx.lineTo(68, 34);
+  ctx.lineTo(80, 42);
+  ctx.lineTo(92, 30);
+  ctx.lineTo(104, 38);
+  ctx.stroke();
 
-  g.add(spriteQuad(cvs, 86, 68, 0, 3, 0, 10));
-  return g;
+  ctx.fillStyle = `#${accent.toString(16).padStart(6, '0')}`;
+  ctx.fillRect(28, 20, 88, 4);
+
+  const cg2 = new THREE.Group();
+  cg2.add(spriteQuad(cvs, 100, 72, 0, 3, 0, 10));
+  return cg2;
 }
 
-/** Office plant: pot + leafy blobs. Canvas 40x56. */
+/** Plant */
 export function buildPlant(): THREE.Group {
-  const g = new THREE.Group();
+  const pg = new THREE.Group();
   const cvs = document.createElement('canvas');
-  cvs.width = 40; cvs.height = 56;
+  cvs.width = 48; cvs.height = 64;
   const ctx = cvs.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
-  ctx.fillStyle = '#00000055';
-  ctx.beginPath(); ctx.ellipse(20, 52, 8, 2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#00000044';
+  ctx.beginPath(); ctx.ellipse(24, 56, 10, 2, 0, 0, Math.PI * 2); ctx.fill();
 
-  // Pot
-  isoBox(ctx, 20, 48, 24, 14, 12, '#6b3020', '#4a2218', '#381a10');
+  ctx.fillStyle = '#8b4513';
+  ctx.beginPath();
+  ctx.moveTo(10, 48);
+  ctx.lineTo(38, 52);
+  ctx.lineTo(38, 60);
+  ctx.lineTo(10, 56);
+  ctx.closePath();
+  ctx.fill();
 
-  // Leaves stacked
-  const leaf = '#1d7a3a';
-  isoEllipse(ctx, 20, 40, 14, 8, leaf);
-  isoEllipse(ctx, 20, 32, 10, 7, leaf);
-  isoEllipse(ctx, 20, 26, 6, 5, leaf);
+  const leaf = '#2d7a2d';
+  ctx.fillStyle = leaf;
+  ctx.beginPath(); ctx.ellipse(24, 40, 18, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(24, 32, 14, 8, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(24, 26, 10, 6, 0, 0, Math.PI * 2); ctx.fill();
 
-  g.add(spriteQuad(cvs, 28, 36, 0, 2, 0, 10));
-  return g;
+  const pg2 = new THREE.Group();
+  pg2.add(spriteQuad(cvs, 32, 48, 0, 2, 0, 10));
+  return pg2;
 }
 
-/** VIP leather sofa with golden trim. Canvas 100x60. */
+/** VIP Sofa */
 export function buildSofa(): THREE.Group {
-  const g = new THREE.Group();
+  const sg = new THREE.Group();
   const cvs = document.createElement('canvas');
-  cvs.width = 100; cvs.height = 60;
+  cvs.width = 120; cvs.height = 72;
   const ctx = cvs.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
-  ctx.fillStyle = '#00000055';
-  ctx.beginPath(); ctx.ellipse(50, 56, 22, 3, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#00000044';
+  ctx.beginPath(); ctx.ellipse(60, 66, 28, 4, 0, 0, Math.PI * 2); ctx.fill();
 
-  // Seat
-  isoBox(ctx, 50, 48, 64, 28, 10, '#4a2e1a', '#352014', '#281710');
+  ctx.fillStyle = '#4a2c1a';
+  ctx.beginPath();
+  ctx.moveTo(10, 44);
+  ctx.lineTo(110, 48);
+  ctx.lineTo(110, 68);
+  ctx.lineTo(10, 64);
+  ctx.closePath();
+  ctx.fill();
 
-  // Backrest
-  isoBox(ctx, 50, 32, 64, 8, 14, '#382414', '#281710', '#1e100a');
+  ctx.fillStyle = '#3a2414';
+  ctx.beginPath();
+  ctx.moveTo(10, 24);
+  ctx.lineTo(110, 28);
+  ctx.lineTo(110, 48);
+  ctx.lineTo(10, 44);
+  ctx.closePath();
+  ctx.fill();
 
-  // Gold trim line
-  ctx.strokeStyle = '#ffb700';
+  ctx.strokeStyle = '#ffd700';
   ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(20, 36); ctx.lineTo(80, 36); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(10, 28); ctx.lineTo(110, 32); ctx.stroke();
 
-  g.add(spriteQuad(cvs, 70, 44, 0, 2, 0, 10));
-  return g;
+  const sg2 = new THREE.Group();
+  sg2.add(spriteQuad(cvs, 80, 56, 0, 2, 0, 10));
+  return sg2;
 }
 
-/** Giant video wall (back wall full of screens). Canvas (len x 56). */
-export function buildVideoWall(variant: 'green' | 'blue' | 'purple' = 'blue',
-  accent: number, lenUnits: number): THREE.Group {
-  const g = new THREE.Group();
-  const canvasW = Math.max(150, Math.round(lenUnits * 1.4));
+/** Video wall */
+export function buildVideoWall(variant: 'green' | 'blue' | 'purple', accent: number, lenUnits: number): THREE.Group {
+  const vg = new THREE.Group();
+  const canvasW = 180;
   const canvasH = 56;
   const cvs = document.createElement('canvas');
   cvs.width = canvasW; cvs.height = canvasH;
   const ctx = cvs.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
-  const accentCss = css(accent);
-  const screenW = (canvasW - 24) / 3;
-  const screenH = 32;
-  const screenY = 14;
-
-  // Base panel
-  ctx.fillStyle = '#0d0d12';
-  ctx.fillRect(0, 34, canvasW, 20);
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 32, 180, 24);
   ctx.strokeStyle = '#1a1a2e';
   ctx.lineWidth = 1;
-  ctx.strokeRect(1, 35, canvasW - 2, 18);
+  ctx.strokeRect(0, 32, 180, 24);
 
-  // Accent underline
+  const accentCss = `#${accent.toString(16).padStart(6, '0')}`;
   ctx.fillStyle = accentCss;
-  ctx.fillRect(0, 30, canvasW, 4);
+  ctx.fillRect(0, 28, 180, 4);
 
-  // Three screens
+  const screenColors = { green: '#00ff88', blue: '#4488ff', purple: '#aa66ff' };
+  const screenColor = screenColors[variant];
   for (let i = 0; i < 3; i++) {
-    const sx = 12 + i * (screenW + 6);
-    ctx.fillStyle = '#040d1a';
-    ctx.fillRect(sx, screenY, screenW, screenH);
-    ctx.strokeStyle = accentCss;
+    const sx = 10 + i * 56;
+    ctx.fillStyle = '#0a1a1a';
+    ctx.fillRect(sx, 4, 50, 24);
+    ctx.strokeStyle = `#${accent.toString(16).padStart(6, '0')}`;
     ctx.lineWidth = 1;
-    ctx.strokeRect(sx, screenY, screenW, screenH);
-    drawChart(ctx, sx + 2, screenY + 3, screenW - 4, screenH - 6,
-      variant === 'green' ? '#00ff88' :
-        variant === 'blue' ? '#3aa5ff' : '#aa66ff');
+    ctx.strokeRect(sx, 4, 50, 24);
+    ctx.strokeStyle = { green: '#00ff88', blue: '#4488ff', purple: '#aa66ff' }[variant];
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(sx + 2, 24);
+    ctx.lineTo(sx + 12, 16);
+    ctx.lineTo(sx + 22, 18);
+    ctx.lineTo(sx + 22, 10);
+    ctx.lineTo(sx + 22, 10);
+    ctx.lineTo(sx + 32, 18);
+    ctx.lineTo(sx + 38, 14);
+    ctx.stroke();
   }
 
-  const worldH = canvasH / canvasW * lenUnits * 0.6;
-  g.add(spriteQuad(cvs, lenUnits, worldH, 0, 2, 0, 10));
-  return g;
+  const vg2 = new THREE.Group();
+  vg2.add(spriteQuad(cvs, lenUnits, 56 / 180 * lenUnits * 0.7, 0, 2, 0, 10));
+  return vg2;
 }
 
-/** Zone wall segment: dark panel + accent top cap. Canvas (len x 44). */
+/** Zone wall */
 export function buildZoneWall(accent: number, length: number): THREE.Group {
-  const g = new THREE.Group();
-  const canvasW = Math.max(80, Math.round(length * 1.4));
-  const canvasH = 44;
+  const wg = new THREE.Group();
+  const canvasW = Math.max(80, Math.round(length * 1.5));
+  const canvasH = 48;
   const cvs = document.createElement('canvas');
   cvs.width = canvasW; cvs.height = canvasH;
   const ctx = cvs.getContext('2d')!;
   ctx.imageSmoothingEnabled = false;
 
-  ctx.fillStyle = '#14141c';
-  ctx.fillRect(0, 14, canvasW, 28);
-  ctx.strokeStyle = '#1e1e2a';
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(0, 10, canvasW, 36);
+  ctx.strokeStyle = '#2a2a2a';
   ctx.lineWidth = 1;
-  ctx.strokeRect(0, 14, canvasW, 28);
+  ctx.strokeRect(0, 10, canvasW, 36);
 
-  ctx.fillStyle = css(accent);
-  ctx.fillRect(0, 8, canvasW, 6);
+  ctx.fillStyle = `#${accent.toString(16).padStart(6, '0')}`;
+  ctx.fillRect(0, 6, canvasW, 4);
 
-  // side posts
-  ctx.fillStyle = '#101014';
-  ctx.fillRect(0, 10, 6, 34);
-  ctx.fillRect(canvasW - 6, 10, 6, 34);
+  ctx.fillStyle = '#101010';
+  ctx.fillRect(0, 6, 4, 40);
+  ctx.fillRect(canvasW - 4, 6, 4, 40);
 
-  const worldH = canvasH / canvasW * length * 0.6;
-  g.add(spriteQuad(cvs, length, worldH, 0, 2, 0, 10));
-  return g;
+  const wg2 = new THREE.Group();
+  wg2.add(spriteQuad(cvs, length, 48 / canvasW * length * 0.6, 0, 2, 0, 10));
+  return wg2;
 }
 
-/** Chief podium holographic rings (animated externally). Returns ring meshes. */
+/** Chief holographic rings */
 export function buildHoloRings(): {
   group: THREE.Group; ring1: THREE.Mesh; ring2: THREE.Mesh; ring3: THREE.Mesh;
 } {
-  const group = new THREE.Group();
+  const rg = new THREE.Group();
 
-  const goldMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.9 });
-  const cyanMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.7 });
-  const purpleMat = new THREE.MeshBasicMaterial({ color: 0xbd00ff, transparent: true, opacity: 0.5 });
+  const goldMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+  const cyanMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+  const purpleMat = new THREE.MeshBasicMaterial({ color: 0xbd00ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
 
-  const ring1 = new THREE.Mesh(new THREE.TorusGeometry(78, 2.5, 10, 40), goldMat);
+  const ring1 = new THREE.Mesh(new THREE.RingGeometry(70, 74, 40), goldMat);
   ring1.rotation.x = Math.PI / 2;
   ring1.position.y = 48;
-  group.add(ring1);
+  rg.add(ring1);
 
-  const ring2 = new THREE.Mesh(new THREE.TorusGeometry(98, 2, 10, 44), cyanMat);
+  const ring2 = new THREE.Mesh(new THREE.RingGeometry(88, 92, 44), cyanMat);
   ring2.rotation.x = Math.PI / 2 + 0.15;
   ring2.position.y = 58;
-  group.add(ring2);
+  rg.add(ring2);
 
-  const ring3 = new THREE.Mesh(new THREE.TorusGeometry(118, 1.5, 10, 48), purpleMat);
+  const ring3 = new THREE.Mesh(new THREE.RingGeometry(106, 110, 48), purpleMat);
   ring3.rotation.x = Math.PI / 2 - 0.1;
-  ring3.position.y = 70;
-  group.add(ring3);
+  ring3.position.y = 68;
+  rg.add(ring3);
 
-  return { group, ring1, ring2, ring3 };
+  return { group: rg, ring1, ring2, ring3 };
 }
 
-/** Knowledge-graph holo-net on the floor: glowing nodes + links. */
-export function buildHoloNet(ctx: PropContext, originGx: number, originGy: number, accent: number): THREE.Group {
-  const g = new THREE.Group();
+/** Holo net */
+export function buildHoloNet(ctx: any, originGx: number, originGy: number, accent: number): THREE.Group {
+  const ng = new THREE.Group();
   const gold = new THREE.MeshBasicMaterial({ color: accent });
 
   const nodes: Array<[number, number]> = [
@@ -380,19 +434,14 @@ export function buildHoloNet(ctx: PropContext, originGx: number, originGy: numbe
     const link = new THREE.Mesh(new THREE.BoxGeometry(len, 1.2, 1.2), linkMat);
     link.position.copy(mid);
     link.rotation.y = -Math.atan2(vb.z - va.z, vb.x - va.x);
-    g.add(link);
+    ng.add(link);
   }
 
   world.forEach((p, i) => {
     const node = new THREE.Mesh(new THREE.SphereGeometry(i % 2 === 0 ? 5 : 3.5, 6, 5), gold);
     node.position.set(p.x, 5 + (i % 3) * 2, p.z);
-    g.add(node);
+    ng.add(node);
   });
 
-  return g;
-}
-
-/** Zone wall segment: dark panel + accent top cap. Canvas (len x 44). */
-export function buildWallStrip(accent: number, length: number): THREE.Group {
-  return buildZoneWall(accent, length);
+  return ng;
 }

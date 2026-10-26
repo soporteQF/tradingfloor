@@ -1,4 +1,4 @@
-/** Main Three.js scene setup - Habbo-style pixel art */
+/** Main Three.js scene - Habbo Hotel style */
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -6,7 +6,6 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { FloorBuilder } from './FloorBuilder.js';
 import { AvatarSystem } from './AvatarSystem.js';
 import { CameraController } from './CameraController.js';
-import { preloadAssets, createPlaceholderTexture } from '../utils/assets.js';
 import { gridToScreen } from '../utils/iso.js';
 import { getApiClient } from '../net/ApiClient.js';
 import {
@@ -48,15 +47,12 @@ export class FloorScene {
   private clock = new THREE.Clock();
   private reducedMotion = false;
 
-  // Callbacks
   private onStatusUpdate?: (status: ChiefStatus) => void;
   private onError?: (error: Error) => void;
 
-  // State
   private currentStatus: ChiefStatus | null = null;
   private selectedZone: ZoneKey | 'chief' | null = null;
 
-  // Bound resize handler for proper removal
   private boundResize = (event: UIEvent) => this.resize((event.target as Window).innerWidth, (event.target as Window).innerHeight);
 
   constructor(options: FloorSceneOptions) {
@@ -64,25 +60,25 @@ export class FloorScene {
     this.onStatusUpdate = options.onStatusUpdate;
     this.onError = options.onError;
 
-    // Renderer - No tone mapping for pixel art look, brighter clear color
+    // Renderer - crisp pixels, bright background
     this.renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
-      antialias: false, // Crisp pixels for pixel art
+      antialias: false,
       alpha: true,
       powerPreference: 'high-performance',
       preserveDrawingBuffer: false,
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0x1a1a2e, 1); // Brighter background
+    this.renderer.setClearColor(0x2a2a3e, 1); // Nice blue-gray background
     this.renderer.shadowMap.enabled = false;
-    this.renderer.toneMapping = THREE.NoToneMapping; // Pixel art: no tone mapping
+    this.renderer.toneMapping = THREE.NoToneMapping;
 
-    // Scene - Brighter background
+    // Scene
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x1a1a2e);
+    this.scene.background = new THREE.Color(0x2a2a3e);
 
-    // Orthographic camera for isometric view
+    // Orthographic camera - proper Habbo isometric view
     const aspect = window.innerWidth / window.innerHeight;
     const frustumSize = CAMERA_FRUSTUM;
     this.camera = new THREE.OrthographicCamera(
@@ -94,17 +90,12 @@ export class FloorScene {
       2000
     );
 
-    // DEBUG: Force camera to floor center immediately
-    const floorCenter = { x: 0, y: 0, z: 0 };
-    this.camera.position.set(0, 400, 400);
-    this.camera.lookAt(0, 0, 0);
-
-    // Floor container (all floor geometry)
+    // Floor container
     this.floorContainer = new THREE.Group();
     this.floorContainer.name = 'floorContainer';
     this.scene.add(this.floorContainer);
 
-    // Simple render pass only - no bloom/vignette for pixel art look
+    // Simple render pass
     this.composer = new EffectComposer(this.renderer);
     const renderPass = new RenderPass(this.scene, this.camera);
     this.composer.addPass(renderPass);
@@ -114,15 +105,11 @@ export class FloorScene {
     this.avatarSystem = new AvatarSystem();
     this.cameraController = new CameraController(this.camera, this.renderer.domElement);
 
-    // Start
     this.init();
   }
 
   private async init(): Promise<void> {
     try {
-      // Load assets (placeholders for now)
-      await this.loadAssets();
-
       // Build floor
       this.buildFloor();
 
@@ -133,9 +120,9 @@ export class FloorScene {
       const floorCenter = this.gridToWorld(GRID_W / 2, GRID_H / 2);
       this.cameraController.setTarget(floorCenter);
 
-      // FORCE camera to correct position immediately (before first render)
+      // Force camera to correct position immediately
       this.cameraController.update(0);
-      this.camera.position.set(floorCenter.x, 400, floorCenter.z + 400);
+      this.camera.position.set(floorCenter.x, 350, floorCenter.z + 495);
       this.camera.lookAt(floorCenter.x, 0, floorCenter.z);
 
       // Start status polling
@@ -147,19 +134,13 @@ export class FloorScene {
       // Window resize
       window.addEventListener('resize', this.boundResize);
 
-      console.log('🏗️ FloorScene initialized');
+      console.log('🏗️ Habbo FloorScene initialized');
     } catch (e) {
       this.onError?.(e instanceof Error ? e : new Error(String(e)));
     }
   }
 
-  private async loadAssets(): Promise<void> {
-    // For now, use placeholder textures
-    console.log('Assets loaded (placeholders)');
-  }
-
   private buildFloor(): void {
-    // Build all floor geometry
     const floorGeoms = this.floorBuilder.buildAll({
       zones: ZONES,
       chiefCenter: CHIEF_CENTER,
@@ -174,16 +155,13 @@ export class FloorScene {
       corridorW: CORRIDOR_W,
     });
 
-    // Add to floor container
     this.floorContainer.add(floorGeoms.zones);
     this.floorContainer.add(floorGeoms.chiefCenter);
     this.floorContainer.add(floorGeoms.corridor);
     this.floorContainer.add(floorGeoms.entrance);
     this.floorContainer.add(floorGeoms.southSupport);
-    // Add new props group (desks, racks, walls, video walls, holo-net, holo-rings)
     this.floorContainer.add(floorGeoms.props);
 
-    // Store references for interaction
     floorGeoms.zoneMeshes.forEach((mesh, key) => {
       mesh.userData = { zoneKey: key, type: 'zone' };
       this.zoneMeshes.set(key as ZoneKey, mesh);
@@ -194,26 +172,22 @@ export class FloorScene {
     this.entranceMesh = floorGeoms.entranceMesh;
     this.southSupportMesh = floorGeoms.southSupportMesh;
 
-    // Store holo rings for animation
     this.holoRings = floorGeoms.holoRings;
 
-    // Add lighting for props (floor is unlit)
+    // Lighting for props
     this.addMainLights();
     this.addZoneAccentLights();
   }
 
   private addMainLights(): void {
-    // Strong ambient for props visibility
-    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+    const ambient = new THREE.AmbientLight(0xffffff, 1.0);
     this.scene.add(ambient);
 
-    // Directional light for depth on props
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.5);
     dir.position.set(200, 400, 200);
     this.scene.add(dir);
 
-    // Hemisphere for subtle color variation
-    const hemi = new THREE.HemisphereLight(0x00e5ff, 0xffb700, 0.4);
+    const hemi = new THREE.HemisphereLight(0x00e5ff, 0xffb700, 0.3);
     this.scene.add(hemi);
   }
 
@@ -221,15 +195,14 @@ export class FloorScene {
     ZONE_KEYS.forEach(key => {
       const zone = ZONES[key];
       const screenPos = this.gridToWorld(zone.x + ZONE_SIZE / 2, zone.y + ZONE_SIZE / 2);
-      const light = new THREE.PointLight(zone.accent, 0.5, 200, 2);
+      const light = new THREE.PointLight(zone.accent, 0.4, 200, 2);
       light.position.set(screenPos.x, 50, screenPos.y);
       light.castShadow = false;
       this.floorContainer.add(light);
     });
 
-    // Chief center accent light
     const chiefPos = this.gridToWorld(CHIEF_POS.x, CHIEF_POS.y);
-    const chiefLight = new THREE.PointLight(0xffcc00, 0.8, 200, 2);
+    const chiefLight = new THREE.PointLight(0xffd700, 0.6, 200, 2);
     chiefLight.position.set(chiefPos.x, 80, chiefPos.y);
     this.floorContainer.add(chiefLight);
   }
@@ -250,7 +223,7 @@ export class FloorScene {
       type: 'chief',
       gridX: CHIEF_POS.x,
       gridY: CHIEF_POS.y,
-      color: 0xffcc00,
+      color: 0xffd700,
       isChief: true,
     });
 
@@ -266,23 +239,19 @@ export class FloorScene {
       });
     });
 
-    // Add avatar meshes to scene
     this.avatarSystem.getAllMeshes().forEach(mesh => {
       this.scene.add(mesh);
     });
   }
 
   private startStatusPolling(): void {
-    // Detect if we're in Codespace or backend is unavailable
     const isCodespace = window.location.hostname.includes('github.dev') || window.location.hostname.includes('app.github.dev');
     
     if (isCodespace) {
-      // In Codespace: use mock data directly, no API calls
       console.log('📡 Codespace detected: using mock data');
       this.useMockStatus();
       this.statusPollInterval = window.setInterval(() => this.useMockStatus(), 2000);
     } else {
-      // Local development: try API, fallback to mock
       this.pollStatus();
       this.statusPollInterval = window.setInterval(() => this.pollStatus(), 2000);
     }
@@ -302,7 +271,6 @@ export class FloorScene {
   }
 
   private useMockStatus(): void {
-    // Mock status for development
     const mockStatus: any = {
       nightly: { state: 'running', hypotheses_generated: 847, hypotheses_passed: 12, hypotheses_rejected: 835, last_error: null },
       paper_strategies: {
@@ -317,43 +285,31 @@ export class FloorScene {
   }
 
   private updateFromStatus(status: ChiefStatus): void {
-    // Update avatar system with live data
     this.avatarSystem.updateFromStatus(status);
-
-    // Update zone visual indicators
     this.updateZoneVisuals(status);
   }
 
   private updateZoneVisuals(status: ChiefStatus): void {
-    // Update zone materials based on activity
     Object.entries(status.paper_strategies).forEach(([id, strat]) => {
       const zoneKey = this.getZoneForStrategy(strat);
       if (zoneKey && this.zoneMeshes.has(zoneKey)) {
         const mesh = this.zoneMeshes.get(zoneKey)!;
-        const material = mesh.material as THREE.MeshStandardMaterial;
-        if (material && material.emissive) {
-          material.emissiveIntensity = strat.trades_today > 0 ? 0.3 : 0.1;
+        const material = mesh.material as THREE.MeshBasicMaterial;
+        if (material) {
+          material.opacity = strat.trades_today > 0 ? 1.0 : 0.9;
         }
       }
     });
 
-    // Guardian kill switch visual - handle multi-material array safely
     if (this.chiefCenterMesh && this.chiefCenterMesh.material) {
-      const materials = Array.isArray(this.chiefCenterMesh.material) 
-        ? this.chiefCenterMesh.material 
-        : [this.chiefCenterMesh.material];
-      
-      // Find the accent material (index 1) which has emissive
-      const accentMaterial = materials[1] as THREE.MeshStandardMaterial | undefined;
-      if (accentMaterial && accentMaterial.emissive) {
-        accentMaterial.emissiveIntensity = status.guardian_status?.kill_switch ? 1.0 : 0.2;
-        accentMaterial.emissive.setHex(status.guardian_status?.kill_switch ? 0xff4757 : 0x00d4aa);
+      const material = this.chiefCenterMesh.material as THREE.MeshBasicMaterial;
+      if (material) {
+        material.opacity = status.guardian_status?.kill_switch ? 0.5 : 1.0;
       }
     }
   }
 
   private getZoneForStrategy(strat: PaperStrategy): ZoneKey | null {
-    // Map strategy to zone based on regime/symbol
     const regime = strat.regime as ZoneKey;
     if (ZONES[regime]) return regime;
     return null;
@@ -374,35 +330,27 @@ export class FloorScene {
     return new THREE.Vector3(startPos.x, 0, startPos.y);
   }
 
-  // Render loop
   private animate(): void {
     this.animationId = requestAnimationFrame(() => this.animate());
 
     const delta = this.clock.getDelta();
 
-    // Update camera controller
     this.cameraController.update(delta);
 
     // Animate Chief holographic rings
     if (this.holoRings) {
       const t = this.clock.getElapsedTime();
-      this.holoRings.ring1.rotation.z += delta * 0.25;  // gold: slow CW
-      this.holoRings.ring2.rotation.z -= delta * 0.18;  // cyan: CCW
-      this.holoRings.ring3.rotation.z += delta * 0.12;  // purple: slow CW
-      // Subtle vertical bob
-      const bob = Math.sin(t * 0.8) * 1.5;
+      this.holoRings.group.rotation.z += delta * 0.2;
+      const bob = Math.sin(t * 0.8) * 2;
       this.holoRings.group.position.y = bob;
     }
 
-    // Update camera target (follow operator)
     const opPos = this.getOperatorPosition();
     this.cameraController.setTarget(opPos);
 
-    // Render
     this.composer.render(delta);
   }
 
-  // Resize handler
   public resize(width: number, height: number): void {
     const aspect = width / height;
     const frustumSize = CAMERA_FRUSTUM;
@@ -417,26 +365,24 @@ export class FloorScene {
     this.cameraController.resize(width, height);
   }
 
-  // Public API
   public selectZone(zoneKey: ZoneKey | 'chief'): void {
     this.selectedZone = zoneKey;
-    // Visual feedback
     this.zoneMeshes.forEach((mesh, key) => {
-      const material = mesh.material as THREE.MeshStandardMaterial;
-      material.emissiveIntensity = key === zoneKey ? 0.5 : 0.1;
+      const material = mesh.material as THREE.MeshBasicMaterial;
+      material.opacity = key === zoneKey ? 1.0 : 0.9;
     });
     if (this.chiefCenterMesh && zoneKey === 'chief') {
-      (this.chiefCenterMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5;
+      (this.chiefCenterMesh.material as THREE.MeshBasicMaterial).opacity = 1.0;
     }
   }
 
   public clearSelection(): void {
     this.selectedZone = null;
     this.zoneMeshes.forEach(mesh => {
-      (mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.1;
+      (mesh.material as THREE.MeshBasicMaterial).opacity = 0.9;
     });
     if (this.chiefCenterMesh) {
-      (this.chiefCenterMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2;
+      (this.chiefCenterMesh.material as THREE.MeshBasicMaterial).opacity = 1.0;
     }
   }
 
@@ -444,7 +390,6 @@ export class FloorScene {
     try {
       const apiClient = await getApiClient();
       await apiClient.sendCommand({ type, ...data });
-      // Optimistic update - will be confirmed by next poll
     } catch (e) {
       console.error('Command failed:', e);
       this.onError?.(e instanceof Error ? e : new Error(String(e)));
@@ -469,7 +414,6 @@ export class FloorScene {
     this.avatarSystem.setReducedMotion(enabled);
   }
 
-  // Cleanup
   public dispose(): void {
     if (this.animationId) cancelAnimationFrame(this.animationId);
     if (this.statusPollInterval) clearInterval(this.statusPollInterval);
@@ -479,7 +423,6 @@ export class FloorScene {
     this.composer.dispose();
     this.renderer.dispose();
 
-    // Remove event listeners
     window.removeEventListener('resize', this.boundResize);
   }
 }
