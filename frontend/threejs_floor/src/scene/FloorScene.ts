@@ -10,12 +10,13 @@ import { AvatarSystem } from './AvatarSystem.js';
 import { CameraController } from './CameraController.js';
 import { createScanlineShader, createVignetteShader } from './Effects.js';
 import { preloadAssets, createPlaceholderTexture } from '../utils/assets.js';
+import { gridToScreen } from '../utils/iso.js';
 import { getApiClient } from '../net/ApiClient.js';
 import {
   TILE_W, TILE_H, GRID_W, GRID_H, ZONE_SIZE, CORRIDOR_W,
   ZONES, CHIEF_CENTER, ENTRANCE, CORRIDOR_Y, SOUTH_SUPPORT_Y,
   OPERATOR_START, CHIEF_POS, ZONE_KEYS,
-  CAMERA_DEFAULTS, LIGHTING, POST_PROCESSING, REDUCED_MOTION_DEFAULTS,
+  CAMERA_DEFAULTS, CAMERA_FRUSTUM, LIGHTING, POST_PROCESSING, REDUCED_MOTION_DEFAULTS,
   ZoneKey,
 } from '../data/floorConfig.js';
 import type { ChiefStatus, PaperStrategy } from '../net/ApiClient.js';
@@ -85,7 +86,7 @@ export class FloorScene {
 
     // Orthographic camera for isometric view
     const aspect = window.innerWidth / window.innerHeight;
-    const frustumSize = 100;
+    const frustumSize = CAMERA_FRUSTUM;
     this.camera = new THREE.OrthographicCamera(
       -frustumSize * aspect / 2,
       frustumSize * aspect / 2,
@@ -94,8 +95,11 @@ export class FloorScene {
       0.1,
       2000
     );
-    this.camera.position.set(0, 200, 0);
-    this.camera.lookAt(0, 0, 0);
+    // Start above the chief center (natural hub of the floor), looking straight down.
+    // Uses the pure gridToScreen helper: floorBuilder is not created yet at this point.
+    const chief = gridToScreen(CHIEF_POS.x, CHIEF_POS.y);
+    this.camera.position.set(chief.x, 400, chief.y + 0.01);
+    this.camera.lookAt(chief.x, 0, chief.y);
     this.camera.zoom = CAMERA_DEFAULTS.zoom;
 
     // Floor container (all floor geometry)
@@ -155,6 +159,9 @@ export class FloorScene {
 
       // Build floor
       this.buildFloor();
+
+      // Add main scene lighting (ambient + directional + hemisphere)
+      this.addMainLights();
 
       // Create avatars
       this.createAvatars();
@@ -220,6 +227,26 @@ export class FloorScene {
 
     // Add zone accent lights
     this.addZoneAccentLights();
+  }
+
+  private addMainLights(): void {
+    const ambient = new THREE.AmbientLight(LIGHTING.ambient.color, LIGHTING.ambient.intensity);
+    this.scene.add(ambient);
+
+    const dir = new THREE.DirectionalLight(LIGHTING.directional.color, LIGHTING.directional.intensity);
+    dir.position.set(
+      LIGHTING.directional.position[0],
+      LIGHTING.directional.position[1],
+      LIGHTING.directional.position[2]
+    );
+    this.scene.add(dir);
+
+    const hemi = new THREE.HemisphereLight(
+      LIGHTING.hemisphere.skyColor,
+      LIGHTING.hemisphere.groundColor,
+      LIGHTING.hemisphere.intensity
+    );
+    this.scene.add(hemi);
   }
 
   private addZoneAccentLights(): void {
@@ -373,10 +400,10 @@ export class FloorScene {
     const op = this.avatarSystem.getAvatar('operator');
     if (op) {
       const worldPos = this.avatarSystem.gridToWorld(op.gridX, op.gridY);
-      return new THREE.Vector3(worldPos.x, 0, worldPos.y);
+      return new THREE.Vector3(worldPos.x, 0, worldPos.z);
     }
     const startPos = this.gridToWorld(OPERATOR_START.x, OPERATOR_START.y);
-    return new THREE.Vector3(startPos.x, 0, startPos.y);
+    return new THREE.Vector3(startPos.x, 0, startPos.z);
   }
 
   // Public API
@@ -460,7 +487,7 @@ export class FloorScene {
   // Resize handler
   public resize(width: number, height: number): void {
     const aspect = width / height;
-    const frustumSize = 100;
+    const frustumSize = CAMERA_FRUSTUM;
     this.camera.left = -frustumSize * aspect / 2;
     this.camera.right = frustumSize * aspect / 2;
     this.camera.top = frustumSize / 2;

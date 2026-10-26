@@ -1,7 +1,7 @@
 /** Camera controller for isometric orbital + focus */
 
 import * as THREE from 'three';
-import { CAMERA_DEFAULTS, REDUCED_MOTION_DEFAULTS } from '../data/floorConfig.js';
+import { CAMERA_DEFAULTS, CAMERA_FRUSTUM, REDUCED_MOTION_DEFAULTS } from '../data/floorConfig.js';
 
 export interface CameraTarget {
   x: number;
@@ -34,6 +34,7 @@ export class CameraController {
   // Focus modes
   private focusMode: 'follow' | 'fixed' | 'chief' = 'follow';
   private fixedTarget: CameraTarget | null = null;
+  private initialized = false;
 
   constructor(camera: THREE.OrthographicCamera, domElement: HTMLElement) {
     this.camera = camera;
@@ -131,20 +132,19 @@ export class CameraController {
       this.currentTarget = { ...this.target };
     }
 
-    // Apply camera position
-    const aspect = this.aspect;
-    const frustumSize = this.camera.top * 2;
-
-    // Camera looks at target from above (isometric)
-    const camX = this.currentTarget.x + frustumSize * this.offsetX * aspect;
-    const camY = 200; // Fixed height for orthographic
-    const camZ = this.currentTarget.z + frustumSize * this.offsetY;
+    // Apply camera position — straight-down top view (the floor geometry is
+    // already iso-projected into the XZ plane, Habbo-style, so no tilt needed).
+    // The +0.01 z offset avoids the degenerate straight-down lookAt.
+    const camX = this.currentTarget.x;
+    const camY = 400;
+    const camZ = this.currentTarget.z + 0.01;
 
     this.camera.position.x += (camX - this.camera.position.x) * (this.reducedMotion ? 1 : this.lerpFactor);
     this.camera.position.y += (camY - this.camera.position.y) * (this.reducedMotion ? 1 : this.lerpFactor);
     this.camera.position.z += (camZ - this.camera.position.z) * (this.reducedMotion ? 1 : this.lerpFactor);
 
     // Look at target
+    this.camera.up.set(0, 1, 0);
     this.camera.lookAt(this.currentTarget.x, 0, this.currentTarget.z);
 
     // Update zoom
@@ -155,6 +155,13 @@ export class CameraController {
   public setTarget(target: CameraTarget): void {
     if (this.focusMode === 'follow') {
       this.target = { ...target };
+      // Snap on the very first target so the camera starts perfectly framed
+      // (avoids a visible drift-in on load and stale first frames).
+      if (!this.initialized) {
+        this.initialized = true;
+        this.currentTarget = { ...target };
+        this.camera.position.set(target.x, 400, target.z + 0.01);
+      }
     }
   }
 
@@ -201,7 +208,7 @@ export class CameraController {
   public resize(width: number, height: number): void {
     this.aspect = width / height;
     const aspect = this.aspect;
-    const frustumSize = 100;
+    const frustumSize = CAMERA_FRUSTUM;
     this.camera.left = -frustumSize * aspect / 2;
     this.camera.right = frustumSize * aspect / 2;
     this.camera.top = frustumSize / 2;

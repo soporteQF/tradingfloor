@@ -60,6 +60,19 @@ export class FloorBuilder {
     return { x: screen.x, y: 0, z: screen.y };
   }
 
+  /** Build an isometric shape from getIsoRect corners, lying flat on XZ with UP normals.
+   *  Shape-space Y is NEGATED so that after rotateX(-PI/2) (Y -> -Z) world Z = +screenY,
+   *  matching avatars/lights/camera coordinates. */
+  private isoShape(corners: number[]): THREE.Shape {
+    const s = new THREE.Shape();
+    s.moveTo(corners[0], -corners[1]);
+    s.lineTo(corners[2], -corners[3]);
+    s.lineTo(corners[4], -corners[5]);
+    s.lineTo(corners[6], -corners[7]);
+    s.lineTo(corners[0], -corners[1]);
+    return s;
+  }
+
   /** Build a single zone mesh */
   private buildZoneMesh(key: ZoneKey, zone: any, texture: THREE.Texture): THREE.Mesh {
     const px = zone.x * 64; // TILE_W
@@ -69,12 +82,7 @@ export class FloorBuilder {
 
     // Create geometry from isometric rectangle
     const corners = getIsoRect(px, py, zw, zh);
-    const shape = new THREE.Shape();
-    shape.moveTo(corners[0], corners[1]);
-    shape.lineTo(corners[2], corners[3]);
-    shape.lineTo(corners[4], corners[5]);
-    shape.lineTo(corners[6], corners[7]);
-    shape.lineTo(corners[0], corners[1]);
+    const shape = this.isoShape(corners);
 
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2); // Lay flat
@@ -108,12 +116,7 @@ export class FloorBuilder {
     const h = size * 32;
 
     const corners = getIsoRect(px, py, w, h);
-    const shape = new THREE.Shape();
-    shape.moveTo(corners[0], corners[1]);
-    shape.lineTo(corners[2], corners[3]);
-    shape.lineTo(corners[4], corners[5]);
-    shape.lineTo(corners[6], corners[7]);
-    shape.lineTo(corners[0], corners[1]);
+    const shape = this.isoShape(corners);
 
     // Extrude for podium height
     const extrudeSettings = {
@@ -163,12 +166,7 @@ export class FloorBuilder {
     const h = 4 * 32; // CORRIDOR_W * TILE_H
 
     const corners = getIsoRect(px, py, w, h);
-    const shape = new THREE.Shape();
-    shape.moveTo(corners[0], corners[1]);
-    shape.lineTo(corners[2], corners[3]);
-    shape.lineTo(corners[4], corners[5]);
-    shape.lineTo(corners[6], corners[7]);
-    shape.lineTo(corners[0], corners[1]);
+    const shape = this.isoShape(corners);
 
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);
@@ -201,12 +199,7 @@ export class FloorBuilder {
     const hh = h * 32;
 
     const corners = getIsoRect(px, py, ww, hh);
-    const shape = new THREE.Shape();
-    shape.moveTo(corners[0], corners[1]);
-    shape.lineTo(corners[2], corners[3]);
-    shape.lineTo(corners[4], corners[5]);
-    shape.lineTo(corners[6], corners[7]);
-    shape.lineTo(corners[0], corners[1]);
+    const shape = this.isoShape(corners);
 
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);
@@ -238,12 +231,7 @@ export class FloorBuilder {
     const h = (60 - y) * 32; // GRID_H - y
 
     const corners = getIsoRect(px, py, w, h);
-    const shape = new THREE.Shape();
-    shape.moveTo(corners[0], corners[1]);
-    shape.lineTo(corners[2], corners[3]);
-    shape.lineTo(corners[4], corners[5]);
-    shape.lineTo(corners[6], corners[7]);
-    shape.lineTo(corners[0], corners[1]);
+    const shape = this.isoShape(corners);
 
     const geometry = new THREE.ShapeGeometry(shape);
     geometry.rotateX(-Math.PI / 2);

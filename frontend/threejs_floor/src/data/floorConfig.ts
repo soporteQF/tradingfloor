@@ -117,11 +117,15 @@ export const CAMERA_DEFAULTS = {
   offsetY: -0.1,
 };
 
+/** Vertical size of the orthographic frustum in world units.
+ *  The full floor spans ~3000 x 1500 world units, so 1800 lets us see the whole floor. */
+export const CAMERA_FRUSTUM = 1800;
+
 // Lighting
 export const LIGHTING = {
-  ambient: { color: 0x444466, intensity: 0.6 },
-  directional: { color: 0xffffff, intensity: 1.2, position: [100, 200, 100] },
-  hemisphere: { skyColor: 0x00d4aa, groundColor: 0x0a0a0f, intensity: 0.4 },
+  ambient: { color: 0x8888aa, intensity: 1.2 },
+  directional: { color: 0xffffff, intensity: 2.0, position: [100, 200, 100] },
+  hemisphere: { skyColor: 0x00d4aa, groundColor: 0x0a0a0f, intensity: 0.8 },
   zoneAccent: { intensity: 0.3, distance: 200, decay: 2 },
 };
 

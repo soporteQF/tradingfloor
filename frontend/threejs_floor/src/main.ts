@@ -13,6 +13,14 @@ declare global {
   }
 }
 
+// DEBUG: surface any uncaught error into <title> for headless dumps
+window.addEventListener('error', (e) => {
+  document.title = `ERR ${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`;
+});
+window.addEventListener('unhandledrejection', (e) => {
+  document.title = `REJ ${String((e as PromiseRejectionEvent).reason)}`.slice(0, 180);
+});
+
 async function main(): Promise<void> {
   try {
     // Create overlay manager first (handles loading screen)
@@ -98,6 +106,8 @@ async function main(): Promise<void> {
     console.log('🚀 NEXUS QUANT FLOOR ready');
   } catch (error) {
     console.error('Failed to initialize:', error);
+    const msg = error instanceof Error ? `${error.message} | ${error.stack?.split('\n')[1] || ''}` : String(error);
+    document.title = `INIT_ERR ${msg}`.slice(0, 200);
     const loading = document.getElementById('loading');
     const loadStatus = document.getElementById('loadStatus');
     const loadError = document.getElementById('loadError');
