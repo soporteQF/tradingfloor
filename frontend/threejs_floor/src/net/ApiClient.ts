@@ -354,7 +354,7 @@ export async function getApiClient(): Promise<ApiClient> {
     return mockApi as any;
   }
 
-  if (useMock) return api; // Return mock interface
+  if (useMock) return mockApi as any; // Return mock interface
 
   try {
     await api.healthCheck();
