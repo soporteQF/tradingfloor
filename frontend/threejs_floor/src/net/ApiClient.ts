@@ -337,10 +337,23 @@ export const mockApi = {
   },
 };
 
-// Auto-detect: use mock if backend not reachable
+// Auto-detect: use mock if backend not reachable OR in Codespaces
 let useMock = false;
 
+function isCodespace(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return host.includes('github.dev') || host.includes('app.github.dev');
+}
+
 export async function getApiClient(): Promise<ApiClient> {
+  // Force mock in Codespaces (no backend available)
+  if (isCodespace()) {
+    console.log('Codespace detected, using mock API');
+    useMock = true;
+    return mockApi as any;
+  }
+
   if (useMock) return api; // Return mock interface
 
   try {

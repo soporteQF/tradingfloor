@@ -333,23 +333,23 @@ export class FloorScene {
       if (zoneKey && this.zoneMeshes.has(zoneKey)) {
         const mesh = this.zoneMeshes.get(zoneKey)!;
         const material = mesh.material as THREE.MeshStandardMaterial;
-        if (material.emissive) {
+        if (material && material.emissive) {
           material.emissiveIntensity = strat.trades_today > 0 ? 0.3 : 0.1;
         }
       }
     });
 
-    // Guardian kill switch visual - handle multi-material array
-    if (this.chiefCenterMesh) {
+    // Guardian kill switch visual - handle multi-material array safely
+    if (this.chiefCenterMesh && this.chiefCenterMesh.material) {
       const materials = Array.isArray(this.chiefCenterMesh.material) 
         ? this.chiefCenterMesh.material 
         : [this.chiefCenterMesh.material];
       
       // Find the accent material (index 1) which has emissive
-      const accentMaterial = materials[1] as THREE.MeshStandardMaterial;
+      const accentMaterial = materials[1] as THREE.MeshStandardMaterial | undefined;
       if (accentMaterial && accentMaterial.emissive) {
-        accentMaterial.emissiveIntensity = status.guardian_status.kill_switch ? 1.0 : 0.2;
-        accentMaterial.emissive.setHex(status.guardian_status.kill_switch ? 0xff4757 : 0x00d4aa);
+        accentMaterial.emissiveIntensity = status.guardian_status?.kill_switch ? 1.0 : 0.2;
+        accentMaterial.emissive.setHex(status.guardian_status?.kill_switch ? 0xff4757 : 0x00d4aa);
       }
     }
   }
