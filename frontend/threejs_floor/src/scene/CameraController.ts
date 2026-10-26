@@ -23,6 +23,7 @@ export class CameraController {
   private offsetY = CAMERA_DEFAULTS.offsetY;
 
   private reducedMotion = false;
+  private aspect = 1;
 
   // Interaction state
   private isDragging = false;
@@ -131,7 +132,7 @@ export class CameraController {
     }
 
     // Apply camera position
-    const aspect = this.camera.aspect;
+    const aspect = this.aspect;
     const frustumSize = this.camera.top * 2;
 
     // Camera looks at target from above (isometric)
@@ -198,7 +199,8 @@ export class CameraController {
   }
 
   public resize(width: number, height: number): void {
-    const aspect = width / height;
+    this.aspect = width / height;
+    const aspect = this.aspect;
     const frustumSize = 100;
     this.camera.left = -frustumSize * aspect / 2;
     this.camera.right = frustumSize * aspect / 2;

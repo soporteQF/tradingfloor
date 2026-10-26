@@ -10,6 +10,8 @@ export interface AvatarConfig {
   type: AvatarType;
   gridX: number;
   gridY: number;
+  targetGridX?: number;
+  targetGridY?: number;
   color: number;
   isChief?: boolean;
 }
@@ -33,13 +35,13 @@ export interface AvatarState {
   voiceRingActive: boolean;
   voiceRingTimer: number;
   voiceRingMesh: THREE.Mesh | null;
-  mesh: THREE.Mesh;
+  mesh: THREE.Sprite;
   labelMesh: THREE.Mesh | null;
 }
 
 export class AvatarSystem {
   private avatars: Map<string, AvatarState> = new Map();
-  private avatarMeshes: Map<string, THREE.Mesh> = new Map();
+  private avatarMeshes: Map<string, THREE.Sprite> = new Map();
   private textures: Map<AvatarType, THREE.Texture> = new Map();
   private labelSprites: Map<string, THREE.Sprite> = new Map();
 
@@ -56,7 +58,7 @@ export class AvatarSystem {
   }
 
   public createAvatar(config: AvatarConfig): void {
-    const texture = this.textures.get(config.type) || this.textures.get('agent')!;
+    const texture = this.textures.get(config.type) || this.textures.get('research')!;
 
     // Create sprite material
     const material = new THREE.SpriteMaterial({
@@ -87,8 +89,8 @@ export class AvatarSystem {
       type: config.type,
       gridX: config.gridX,
       gridY: config.gridY,
-      targetGridX: config.targetGridX,
-      targetGridY: config.targetGridY,
+      targetGridX: config.targetGridX ?? config.gridX,
+      targetGridY: config.targetGridY ?? config.gridY,
       color: config.color,
       isChief: config.isChief || false,
       isWalking: false,
@@ -252,12 +254,12 @@ export class AvatarSystem {
         if (state.voiceRingActive && state.voiceRingMesh) {
           state.voiceRingTimer -= delta;
           const pulse = Math.sin(state.voiceRingTimer * 20) * 0.5 + 0.5;
-          state.voiceRingMesh.material.opacity = pulse * 0.6;
+          (state.voiceRingMesh.material as THREE.MeshBasicMaterial).opacity = pulse * 0.6;
           state.voiceRingMesh.scale.setScalar(1 + pulse * 0.3);
           state.voiceRingMesh.visible = true;
           if (state.voiceRingTimer <= 0) {
             state.voiceRingActive = false;
-            state.voiceRingMesh.material.opacity = 0;
+            (state.voiceRingMesh.material as THREE.MeshBasicMaterial).opacity = 0;
             state.voiceRingMesh.scale.setScalar(1);
             state.voiceRingMesh.visible = false;
           }
@@ -292,7 +294,7 @@ export class AvatarSystem {
       state.voiceRingActive = true;
       state.voiceRingTimer = duration;
       state.voiceRingMesh.visible = true;
-      state.voiceRingMesh.material.opacity = 0.6;
+      (state.voiceRingMesh.material as THREE.MeshBasicMaterial).opacity = 0.6;
       state.voiceRingMesh.scale.setScalar(1);
     }
   }
@@ -301,7 +303,7 @@ export class AvatarSystem {
     this.avatars.forEach(state => {
       state.mesh.scale.y = 1;
       if (state.voiceRingMesh) {
-        state.voiceRingMesh.material.opacity = 0;
+        (state.voiceRingMesh.material as THREE.MeshBasicMaterial).opacity = 0;
         state.voiceRingMesh.visible = false;
       }
     });
@@ -321,7 +323,7 @@ export class AvatarSystem {
   public dispose(): void {
     this.avatars.forEach(state => {
       if (state.mesh.parent) state.mesh.parent.remove(state.mesh);
-      state.mesh.material.dispose();
+      (state.mesh.material as THREE.Material).dispose();
       if (state.voiceRingMesh) {
         state.voiceRingMesh.geometry.dispose();
         (state.voiceRingMesh.material as THREE.Material).dispose();

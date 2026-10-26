@@ -114,7 +114,7 @@ class ApiClient {
 
   /** Get full Chief status */
   async getStatus(): Promise<ChiefStatus> {
-    const cached = this.getCached('status');
+    const cached = this.getCached<ChiefStatus>('status');
     if (cached) return cached;
 
     const data = await this.request<ChiefStatus>('/chief/status');

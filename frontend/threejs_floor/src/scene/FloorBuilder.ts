@@ -11,13 +11,13 @@ import { gridToScreen, getIsoRect } from '../utils/iso.js';
 
 export interface FloorGeometryParts {
   zones: THREE.Group;
-  chiefCenter: THREE.Mesh;
+  chiefCenter: THREE.Group;
   chiefCenterMesh: THREE.Mesh;
-  corridor: THREE.Mesh;
+  corridor: THREE.Group;
   corridorMesh: THREE.Mesh;
-  entrance: THREE.Mesh;
+  entrance: THREE.Group;
   entranceMesh: THREE.Mesh;
-  southSupport: THREE.Mesh;
+  southSupport: THREE.Group;
   southSupportMesh: THREE.Mesh;
   zoneMeshes: Map<ZoneKey, THREE.Mesh>;
 }
@@ -335,7 +335,7 @@ export class FloorBuilder {
     zonesGroup.name = 'zones';
 
     const zones = params.zones;
-    Object.entries(zones).forEach(([key, zone]) => {
+    Object.entries(zones).forEach(([key, zone]: [string, any]) => {
       // Create a simple colored texture for each zone
       const canvas = document.createElement('canvas');
       canvas.width = 64; canvas.height = 64;

@@ -39,6 +39,9 @@ export class FloorScene {
   private floorContainer: THREE.Group;
   private zoneMeshes: Map<ZoneKey, THREE.Mesh> = new Map();
   private chiefCenterMesh: THREE.Mesh | null = null;
+  private corridorMesh: THREE.Mesh | null = null;
+  private entranceMesh: THREE.Mesh | null = null;
+  private southSupportMesh: THREE.Mesh | null = null;
 
   private statusPollInterval: number | null = null;
   private animationId: number | null = null;
