@@ -275,8 +275,19 @@ export class FloorScene {
   }
 
   private startStatusPolling(): void {
-    this.pollStatus();
-    this.statusPollInterval = window.setInterval(() => this.pollStatus(), 2000);
+    // Detect if we're in Codespace or backend is unavailable
+    const isCodespace = window.location.hostname.includes('github.dev') || window.location.hostname.includes('app.github.dev');
+    
+    if (isCodespace) {
+      // In Codespace: use mock data directly, no API calls
+      console.log('📡 Codespace detected: using mock data');
+      this.useMockStatus();
+      this.statusPollInterval = window.setInterval(() => this.useMockStatus(), 2000);
+    } else {
+      // Local development: try API, fallback to mock
+      this.pollStatus();
+      this.statusPollInterval = window.setInterval(() => this.pollStatus(), 2000);
+    }
   }
 
   private async pollStatus(): Promise<void> {
@@ -288,7 +299,6 @@ export class FloorScene {
       this.onStatusUpdate?.(status);
     } catch (e) {
       console.warn('Status poll failed:', e);
-      // Use mock data
       this.useMockStatus();
     }
   }
@@ -323,17 +333,24 @@ export class FloorScene {
       if (zoneKey && this.zoneMeshes.has(zoneKey)) {
         const mesh = this.zoneMeshes.get(zoneKey)!;
         const material = mesh.material as THREE.MeshStandardMaterial;
-        // Pulse emission based on activity
-        const intensity = strat.trades_today > 0 ? 0.3 : 0.1;
-        material.emissiveIntensity = intensity;
+        if (material.emissive) {
+          material.emissiveIntensity = strat.trades_today > 0 ? 0.3 : 0.1;
+        }
       }
     });
 
-    // Guardian kill switch visual
+    // Guardian kill switch visual - handle multi-material array
     if (this.chiefCenterMesh) {
-      const material = this.chiefCenterMesh.material as THREE.MeshStandardMaterial;
-      material.emissiveIntensity = status.guardian_status.kill_switch ? 1.0 : 0.2;
-      material.emissive.setHex(status.guardian_status.kill_switch ? 0xff4757 : 0x00d4aa);
+      const materials = Array.isArray(this.chiefCenterMesh.material) 
+        ? this.chiefCenterMesh.material 
+        : [this.chiefCenterMesh.material];
+      
+      // Find the accent material (index 1) which has emissive
+      const accentMaterial = materials[1] as THREE.MeshStandardMaterial;
+      if (accentMaterial && accentMaterial.emissive) {
+        accentMaterial.emissiveIntensity = status.guardian_status.kill_switch ? 1.0 : 0.2;
+        accentMaterial.emissive.setHex(status.guardian_status.kill_switch ? 0xff4757 : 0x00d4aa);
+      }
     }
   }
 
