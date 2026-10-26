@@ -44,6 +44,8 @@ export class FloorScene {
   private entranceMesh: THREE.Mesh | null = null;
   private southSupportMesh: THREE.Mesh | null = null;
 
+  private holoRings: { group: THREE.Group; ring1: THREE.Mesh; ring2: THREE.Mesh; ring3: THREE.Mesh } | null = null;
+
   private statusPollInterval: number | null = null;
   private animationId: number | null = null;
   private clock = new THREE.Clock();
@@ -213,6 +215,8 @@ export class FloorScene {
     this.floorContainer.add(floorGeoms.corridor);
     this.floorContainer.add(floorGeoms.entrance);
     this.floorContainer.add(floorGeoms.southSupport);
+    // Add new props group (desks, racks, walls, video walls, holo-net, holo-rings)
+    this.floorContainer.add(floorGeoms.props);
 
     // Store references for interaction
     floorGeoms.zoneMeshes.forEach((mesh, key) => {
@@ -224,6 +228,9 @@ export class FloorScene {
     this.corridorMesh = floorGeoms.corridorMesh;
     this.entranceMesh = floorGeoms.entranceMesh;
     this.southSupportMesh = floorGeoms.southSupportMesh;
+
+    // Store holo rings for animation
+    this.holoRings = floorGeoms.holoRings;
 
     // Add zone accent lights
     this.addZoneAccentLights();
@@ -475,6 +482,17 @@ export class FloorScene {
 
     // Update avatars
     this.avatarSystem.update(delta, this.reducedMotion);
+
+    // Animate Chief holographic rings
+    if (this.holoRings) {
+      const t = this.clock.getElapsedTime();
+      this.holoRings.ring1.rotation.z += delta * 0.25;  // gold: slow CW
+      this.holoRings.ring2.rotation.z -= delta * 0.18;  // cyan: CCW
+      this.holoRings.ring3.rotation.z += delta * 0.12;  // purple: slow CW
+      // Subtle vertical bob
+      const bob = Math.sin(t * 0.8) * 1.5;
+      this.holoRings.group.position.y = bob;
+    }
 
     // Update camera target (follow operator)
     const opPos = this.getOperatorPosition();

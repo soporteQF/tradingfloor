@@ -2,10 +2,23 @@
 
 import * as THREE from 'three';
 import { createPlaceholderTexture } from '../utils/assets.js';
+import { css, createHabboTileTexture } from '../utils/pixelArt.js';
+import {
+  buildDesk,
+  buildServerRack,
+  buildHoloDome,
+  buildCommandConsole,
+  buildPlant,
+  buildSofa,
+  buildVideoWall,
+  buildHoloNet,
+  buildHoloRings,
+  buildZoneWall,
+} from './PropsBuilder.js';
 import {
   TILE_W, TILE_H, GRID_W, GRID_H, ZONE_SIZE, CORRIDOR_W,
   ZONES, CHIEF_CENTER, ENTRANCE, CORRIDOR_Y, SOUTH_SUPPORT_Y,
-  ZoneKey,
+  CHIEF_POS, ZoneKey,
 } from '../data/floorConfig.js';
 import { gridToScreen, getIsoRect } from '../utils/iso.js';
 
@@ -14,12 +27,17 @@ export interface FloorGeometryParts {
   chiefCenter: THREE.Group;
   chiefCenterMesh: THREE.Mesh;
   corridor: THREE.Group;
+  corridorGroup: THREE.Group;
   corridorMesh: THREE.Mesh;
   entrance: THREE.Group;
+  entranceGroup: THREE.Group;
   entranceMesh: THREE.Mesh;
   southSupport: THREE.Group;
+  southSupportGroup: THREE.Group;
   southSupportMesh: THREE.Mesh;
   zoneMeshes: Map<ZoneKey, THREE.Mesh>;
+  props: THREE.Group;
+  holoRings: { group: THREE.Group; ring1: THREE.Mesh; ring2: THREE.Mesh; ring3: THREE.Mesh } | null;
 }
 
 export class FloorBuilder {
@@ -91,11 +109,9 @@ export class FloorBuilder {
     const material = new THREE.MeshStandardMaterial({
       map: texture,
       color: 0xffffff,
-      transparent: true,
-      opacity: 0.9,
       side: THREE.DoubleSide,
-      roughness: 0.9,
-      metalness: 0.1,
+      roughness: 0.85,
+      metalness: 0.15,
       depthWrite: true,
     });
 
@@ -141,9 +157,9 @@ export class FloorBuilder {
     });
 
     const accentMaterial = new THREE.MeshStandardMaterial({
-      color: 0x00d4aa,
-      emissive: 0x00d4aa,
-      emissiveIntensity: 0.2,
+      color: 0x00e5ff,
+      emissive: 0x00e5ff,
+      emissiveIntensity: 0.35,
       roughness: 0.1,
       metalness: 0.9,
     });
@@ -316,126 +332,183 @@ export class FloorBuilder {
     zoneSize: number;
     corridorW: number;
   }): FloorGeometryParts {
-    const zoneMeshes = new Map();
+    const zoneMeshes = new Map<ZoneKey, THREE.Mesh>();
 
-    // Zones group
+    // Zones group with Habbo tile textures per zone
     const zonesGroup = new THREE.Group();
     zonesGroup.name = 'zones';
 
     const zones = params.zones;
     Object.entries(zones).forEach(([key, zone]: [string, any]) => {
-      // Create a simple colored texture for each zone
-      const canvas = document.createElement('canvas');
-      canvas.width = 64; canvas.height = 64;
-      const ctx = canvas.getContext('2d')!;
-      ctx.fillStyle = `#${zone.color.toString(16).padStart(6, '0')}`;
-      ctx.fillRect(0, 0, 64, 64);
-      // Grid lines
-      ctx.strokeStyle = '#ffffff11';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < 64; i += 8) {
-        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 64); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(64, i); ctx.stroke();
-      }
-      const texture = new THREE.CanvasTexture(canvas);
+      const texCanvas = createHabboTileTexture(
+        zone.color,
+        zone.color ^ 0x222222,
+        '#ffffff22', '#00000044'
+      );
+      const texture = new THREE.CanvasTexture(texCanvas);
       texture.magFilter = THREE.NearestFilter;
-      texture.minFilter = THREE.LinearMipmapLinearFilter;
-      texture.generateMipmaps = true;
+      texture.minFilter = THREE.NearestFilter;
 
-      const mesh = this.buildZoneMesh(key as any, zone, texture);
+      const mesh = this.buildZoneMesh(key as ZoneKey, zone, texture);
+      mesh.receiveShadow = false;
       zonesGroup.add(mesh);
-      zoneMeshes.set(key, mesh);
-    })
+      zoneMeshes.set(key as ZoneKey, mesh);
+    });
+
+    // Props + walls group
+    const propsGroup = new THREE.Group();
+    propsGroup.name = 'props';
+
+    /** Place a sprite prop at world grid coords. */
+    const placeProp = (kind: string, gx: number, gy: number, variant?: string): void => {
+      const pos = this.gridToWorld(gx, gy);
+      let obj: THREE.Group | THREE.Mesh;
+      switch (kind) {
+        case 'desk': obj = buildDesk(variant as any, 2); break;
+        case 'rack': obj = buildServerRack('blue'); break;
+        case 'plant': obj = buildPlant(); break;
+        case 'sofa': obj = buildSofa(); break;
+        case 'console': obj = buildCommandConsole(0x00e5ff); break;
+        case 'dome': obj = buildHoloDome(0xe052ff); break;
+        default: return;
+      }
+      // Offset so it sits centered on the grid cell, floating slightly
+      obj.position.set(pos.x, 4, pos.z);
+      obj.renderOrder = Math.round(pos.z / 8) + 20;
+      propsGroup.add(obj);
+    };
+
+    const placeWall = (gx: number, gy: number, accent: number, rotY = 0): void => {
+      const pos = this.gridToWorld(gx, gy);
+      const wall = buildZoneWall(accent, 18);
+      wall.position.set(pos.x, 2, pos.z);
+      wall.rotation.y = rotY;
+      wall.renderOrder = Math.round(pos.z / 8) + 30;
+      propsGroup.add(wall);
+    };
+
+    // Per-zone prop plans (local coords within the 16x16 zone)
+    const zonePlans: Record<string, Array<{ kind: string; lx: number; ly: number; variant?: string }>> = {
+      research: [
+        { kind: 'console', lx: 8, ly: 8 },
+        { kind: 'desk', lx: 4, ly: 12, variant: 'blue' },
+        { kind: 'desk', lx: 12, ly: 12, variant: 'blue' },
+        { kind: 'plant', lx: 4, ly: 4 },
+        { kind: 'plant', lx: 12, ly: 4 },
+      ],
+      validation: [
+        { kind: 'desk', lx: 6, ly: 10, variant: 'green' },
+        { kind: 'desk', lx: 10, ly: 10, variant: 'green' },
+        { kind: 'desk', lx: 6, ly: 4, variant: 'green' },
+        { kind: 'desk', lx: 10, ly: 4, variant: 'green' },
+        { kind: 'plant', lx: 2, ly: 14 },
+      ],
+      execution: [
+        { kind: 'desk', lx: 6, ly: 10, variant: 'green' },
+        { kind: 'desk', lx: 10, ly: 10, variant: 'green' },
+        { kind: 'desk', lx: 14, ly: 10, variant: 'green' },
+        { kind: 'desk', lx: 4, ly: 14, variant: 'green' },
+        { kind: 'desk', lx: 12, ly: 14, variant: 'green' },
+        { kind: 'plant', lx: 8, ly: 4 },
+      ],
+      guardian: [
+        { kind: 'sofa', lx: 8, ly: 8 },
+        { kind: 'plant', lx: 12, ly: 12 },
+        { kind: 'plant', lx: 4, ly: 4 },
+      ],
+      regime: [
+        { kind: 'dome', lx: 8, ly: 8 },
+        { kind: 'plant', lx: 4, ly: 4 },
+        { kind: 'plant', lx: 12, ly: 4 },
+      ],
+      alpha: [
+        { kind: 'rack', lx: 4, ly: 8 },
+        { kind: 'rack', lx: 12, ly: 8 },
+        { kind: 'rack', lx: 4, ly: 12 },
+        { kind: 'rack', lx: 12, ly: 12 },
+        { kind: 'plant', lx: 8, ly: 4 },
+      ],
+    };
+
+    // Place props inside each zone
+    Object.entries(ZONES).forEach(([key, zone]) => {
+      const plan = zonePlans[key] ?? [];
+      plan.forEach(p => {
+        placeProp(p.kind, zone.x + p.lx, zone.y + p.ly, p.variant);
+      });
+
+      // Zone walls around the perimeter (just outside the zone)
+      const zx = zone.x; const zy = zone.y;
+      const accent = zone.accent;
+      placeWall(zx + 8, zy - 1, accent, 0);
+      placeWall(zx + 8, zy + 17, accent, 0);
+      placeWall(zx - 1, zy + 8, accent, Math.PI / 2);
+      placeWall(zx + 17, zy + 8, accent, Math.PI / 2);
+
+      // Video wall along the South edge of each zone
+      const vw = buildVideoWall('blue' as any, accent, 14);
+      const vwPos = this.gridToWorld(zx + 8, zy - 1);
+      vw.position.set(vwPos.x, 2, vwPos.z);
+      vw.rotation.y = 0;
+      vw.renderOrder = Math.round(vwPos.z / 8) + 35;
+      propsGroup.add(vw);
+    });
 
     // Chief center
-    const chiefCanvas = document.createElement('canvas');
-    chiefCanvas.width = 64; chiefCanvas.height = 64;
-    const chiefCtx = chiefCanvas.getContext('2d')!;
-    chiefCtx.fillStyle = '#0d0d12'; chiefCtx.fillRect(0, 0, 64, 64);
-    chiefCtx.strokeStyle = '#00d4aa'; chiefCtx.lineWidth = 2;
-    chiefCtx.strokeRect(2, 2, 60, 60);
-    const chiefTexture = new THREE.CanvasTexture(chiefCanvas);
-    chiefTexture.magFilter = THREE.NearestFilter;
-    chiefTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    chiefTexture.generateMipmaps = true;
-
-    const chiefCenterMesh = this.buildChiefCenterMesh(chiefTexture);
+    const chiefCenterMesh = this.buildChiefCenterMesh(createPlaceholderTexture(0x0d0d12));
     const chiefCenterGroup = new THREE.Group();
     chiefCenterGroup.name = 'chief_center';
     chiefCenterGroup.add(chiefCenterMesh);
 
-    // Corridor
-    const corridorCanvas = document.createElement('canvas');
-    corridorCanvas.width = 64; corridorCanvas.height = 64;
-    const corridorCtx = corridorCanvas.getContext('2d')!;
-    corridorCtx.fillStyle = '#0d0d12'; corridorCtx.fillRect(0, 0, 64, 64);
-    corridorCtx.strokeStyle = '#00d4aa'; corridorCtx.lineWidth = 1;
-    for (let i = 0; i < 64; i += 8) {
-      corridorCtx.beginPath(); corridorCtx.moveTo(i, 0); corridorCtx.lineTo(i, 64); corridorCtx.stroke();
-      corridorCtx.beginPath(); corridorCtx.moveTo(0, i); corridorCtx.lineTo(64, i); corridorCtx.stroke();
-    }
-    const corridorTexture = new THREE.CanvasTexture(corridorCanvas);
-    corridorTexture.magFilter = THREE.NearestFilter;
-    corridorTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    corridorTexture.generateMipmaps = true;
+    // Holographic rings above the Chief podium
+    const chiefWorld = this.gridToWorld(CHIEF_POS.x, CHIEF_POS.y);
+    const holoRings = buildHoloRings();
+    holoRings.group.position.set(chiefWorld.x, 0, chiefWorld.z);
+    holoRings.group.renderOrder = 40;
+    propsGroup.add(holoRings.group);
 
-    const corridorMesh = this.buildCorridorMesh(corridorTexture);
+    // Knowledge-graph holo-net across the alpha zone floor
+    const holoNet = buildHoloNet({
+      gridToWorld: this.gridToWorld.bind(this),
+    }, ZONES.alpha.x, ZONES.alpha.y, ZONES.alpha.accent);
+    holoNet.traverse(child => {
+      if (child instanceof THREE.Mesh) { child.renderOrder = 15; }
+    });
+    propsGroup.add(holoNet);
+
+    // Corridor / entrance / south support with tech floor texture
     const corridorGroup = new THREE.Group();
     corridorGroup.name = 'corridor';
+    const corridorMesh = this.buildCorridorMesh(createPlaceholderTexture(0x0d0d12));
     corridorGroup.add(corridorMesh);
     corridorGroup.add(this.buildCorridorArrows());
 
-    // Entrance
-    const entranceCanvas = document.createElement('canvas');
-    entranceCanvas.width = 64; entranceCanvas.height = 64;
-    const entranceCtx = entranceCanvas.getContext('2d')!;
-    entranceCtx.fillStyle = '#1a1a2e'; entranceCtx.fillRect(0, 0, 64, 64);
-    entranceCtx.strokeStyle = '#2a2a3a'; entranceCtx.lineWidth = 1;
-    for (let i = 0; i < 64; i += 8) {
-      entranceCtx.beginPath(); entranceCtx.moveTo(i, 0); entranceCtx.lineTo(i, 64); entranceCtx.stroke();
-      entranceCtx.beginPath(); entranceCtx.moveTo(0, i); entranceCtx.lineTo(64, i); entranceCtx.stroke();
-    }
-    const entranceTexture = new THREE.CanvasTexture(entranceCanvas);
-    entranceTexture.magFilter = THREE.NearestFilter;
-    entranceTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    entranceTexture.generateMipmaps = true;
-
-    const entranceMesh = this.buildEntranceMesh(entranceTexture);
     const entranceGroup = new THREE.Group();
     entranceGroup.name = 'entrance';
+    const entranceMesh = this.buildEntranceMesh(createPlaceholderTexture(0x1a1a2e));
     entranceGroup.add(entranceMesh);
 
-    // South support
-    const southCanvas = document.createElement('canvas');
-    southCanvas.width = 64; southCanvas.height = 64;
-    const southCtx = southCanvas.getContext('2d')!;
-    southCtx.fillStyle = '#0d0d12'; southCtx.fillRect(0, 0, 64, 64);
-    southCtx.strokeStyle = '#2a2a3a'; southCtx.lineWidth = 1;
-    for (let i = 0; i < 64; i += 8) {
-      southCtx.beginPath(); southCtx.moveTo(i, 0); southCtx.lineTo(i, 64); southCtx.stroke();
-      southCtx.beginPath(); southCtx.moveTo(0, i); southCtx.lineTo(64, i); southCtx.stroke();
-    }
-    const southTexture = new THREE.CanvasTexture(southCanvas);
-    southTexture.magFilter = THREE.NearestFilter;
-    southTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    southTexture.generateMipmaps = true;
-
-    const southSupportMesh = this.buildSouthSupportMesh(southTexture);
     const southSupportGroup = new THREE.Group();
     southSupportGroup.name = 'south_support';
+    const southSupportMesh = this.buildSouthSupportMesh(createPlaceholderTexture(0x0d0d12));
     southSupportGroup.add(southSupportMesh);
 
     return {
       zones: zonesGroup,
       chiefCenter: chiefCenterGroup,
-      chiefCenterMesh: chiefCenterGroup.children[0] as THREE.Mesh,
+      chiefCenterMesh: chiefCenterMesh,
       corridor: corridorGroup,
-      corridorMesh: corridorGroup.children[0] as THREE.Mesh,
+      corridorGroup: corridorGroup,
+      corridorMesh: corridorMesh,
       entrance: entranceGroup,
-      entranceMesh: entranceGroup.children[0] as THREE.Mesh,
+      entranceGroup: entranceGroup,
+      entranceMesh: entranceMesh,
       southSupport: southSupportGroup,
-      southSupportMesh: southSupportGroup.children[0] as THREE.Mesh,
+      southSupportGroup: southSupportGroup,
+      southSupportMesh: southSupportMesh,
       zoneMeshes,
+      props: propsGroup,
+      holoRings: holoRings,
     };
   }
 }
