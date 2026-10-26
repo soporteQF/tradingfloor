@@ -106,13 +106,13 @@ export class FloorBuilder {
     geometry.rotateX(-Math.PI / 2); // Lay flat
     geometry.translate(0, 0.01, 0); // Slightly above ground to avoid z-fighting
 
-    const material = new THREE.MeshStandardMaterial({
+    // Unlit material - bright like Habbo floor tiles
+    const material = new THREE.MeshBasicMaterial({
       map: texture,
       color: 0xffffff,
       side: THREE.DoubleSide,
-      roughness: 0.85,
-      metalness: 0.15,
       depthWrite: true,
+      transparent: false,
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -188,14 +188,11 @@ export class FloorBuilder {
     geometry.rotateX(-Math.PI / 2);
     geometry.translate(0, 0.005, 0); // Slightly above zones
 
-    const material = new THREE.MeshStandardMaterial({
+    const material = new THREE.MeshBasicMaterial({
       map: texture,
       color: 0xffffff,
-      transparent: true,
-      opacity: 0.7,
       side: THREE.DoubleSide,
-      roughness: 0.8,
-      metalness: 0.2,
+      transparent: false,
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -221,14 +218,10 @@ export class FloorBuilder {
     geometry.rotateX(-Math.PI / 2);
     geometry.translate(0, 0.002, 0);
 
-    const material = new THREE.MeshStandardMaterial({
+    const material = new THREE.MeshBasicMaterial({
       map: texture,
       color: 0xffffff,
-      transparent: true,
-      opacity: 0.5,
       side: THREE.DoubleSide,
-      roughness: 0.9,
-      metalness: 0.1,
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -253,14 +246,10 @@ export class FloorBuilder {
     geometry.rotateX(-Math.PI / 2);
     geometry.translate(0, 0.001, 0);
 
-    const material = new THREE.MeshStandardMaterial({
+    const material = new THREE.MeshBasicMaterial({
       map: texture,
       color: 0xffffff,
-      transparent: true,
-      opacity: 0.5,
       side: THREE.DoubleSide,
-      roughness: 0.9,
-      metalness: 0.1,
     });
 
     const mesh = new THREE.Mesh(geometry, material);

@@ -1,14 +1,11 @@
-/** Main Three.js scene setup */
+/** Main Three.js scene setup - Habbo-style pixel art */
 
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FloorBuilder } from './FloorBuilder.js';
 import { AvatarSystem } from './AvatarSystem.js';
 import { CameraController } from './CameraController.js';
-import { createScanlineShader, createVignetteShader } from './Effects.js';
 import { preloadAssets, createPlaceholderTexture } from '../utils/assets.js';
 import { gridToScreen } from '../utils/iso.js';
 import { getApiClient } from '../net/ApiClient.js';
@@ -16,7 +13,7 @@ import {
   TILE_W, TILE_H, GRID_W, GRID_H, ZONE_SIZE, CORRIDOR_W,
   ZONES, CHIEF_CENTER, ENTRANCE, CORRIDOR_Y, SOUTH_SUPPORT_Y,
   OPERATOR_START, CHIEF_POS, ZONE_KEYS,
-  CAMERA_DEFAULTS, CAMERA_FRUSTUM, LIGHTING, POST_PROCESSING, REDUCED_MOTION_DEFAULTS,
+  CAMERA_DEFAULTS, CAMERA_FRUSTUM, REDUCED_MOTION_DEFAULTS,
   ZoneKey,
 } from '../data/floorConfig.js';
 import type { ChiefStatus, PaperStrategy } from '../net/ApiClient.js';
@@ -67,24 +64,23 @@ export class FloorScene {
     this.onStatusUpdate = options.onStatusUpdate;
     this.onError = options.onError;
 
-    // Renderer
+    // Renderer - No tone mapping for pixel art look, brighter clear color
     this.renderer = new THREE.WebGLRenderer({
       canvas: options.canvas,
-      antialias: true,
+      antialias: false, // Crisp pixels for pixel art
       alpha: true,
       powerPreference: 'high-performance',
       preserveDrawingBuffer: false,
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0x0a0a0f, 1);
-    this.renderer.shadowMap.enabled = false; // We use baked lighting
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.setClearColor(0x1a1a2e, 1); // Brighter background
+    this.renderer.shadowMap.enabled = false;
+    this.renderer.toneMapping = THREE.NoToneMapping; // Pixel art: no tone mapping
 
-    // Scene
+    // Scene - Brighter background
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a0a0f);
+    this.scene.background = new THREE.Color(0x1a1a2e);
 
     // Orthographic camera for isometric view
     const aspect = window.innerWidth / window.innerHeight;
@@ -97,21 +93,16 @@ export class FloorScene {
       0.1,
       2000
     );
-    // Start above the chief center (natural hub of the floor), looking straight down.
-    // Uses the pure gridToScreen helper: floorBuilder is not created yet at this point.
-    const chief = gridToScreen(CHIEF_POS.x, CHIEF_POS.y);
-    this.camera.position.set(chief.x, 400, chief.y + 0.01);
-    this.camera.lookAt(chief.x, 0, chief.y);
-    this.camera.zoom = CAMERA_DEFAULTS.zoom;
 
     // Floor container (all floor geometry)
     this.floorContainer = new THREE.Group();
     this.floorContainer.name = 'floorContainer';
     this.scene.add(this.floorContainer);
 
-    // Post-processing
+    // Simple render pass only - no bloom/vignette for pixel art look
     this.composer = new EffectComposer(this.renderer);
-    this.setupPostProcessing();
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
 
     // Systems
     this.floorBuilder = new FloorBuilder();
@@ -122,38 +113,6 @@ export class FloorScene {
     this.init();
   }
 
-  private setupPostProcessing(): void {
-    // Render pass
-    const renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(renderPass);
-
-    // Bloom pass
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      POST_PROCESSING.bloom.strength,
-      POST_PROCESSING.bloom.radius,
-      POST_PROCESSING.bloom.threshold
-    );
-    bloomPass.threshold = POST_PROCESSING.bloom.threshold;
-    bloomPass.strength = POST_PROCESSING.bloom.strength;
-    bloomPass.radius = POST_PROCESSING.bloom.radius;
-    this.composer.addPass(bloomPass);
-    (this.composer as any).bloomPass = bloomPass;
-
-    // Scanlines
-    const scanlinePass = new ShaderPass(createScanlineShader());
-    scanlinePass.uniforms.opacity.value = POST_PROCESSING.scanlines.opacity;
-    scanlinePass.uniforms.scale.value = POST_PROCESSING.scanlines.scale;
-    this.composer.addPass(scanlinePass);
-    (this.composer as any).scanlinePass = scanlinePass;
-
-    // Vignette
-    const vignettePass = new ShaderPass(createVignetteShader());
-    vignettePass.uniforms.offset.value = POST_PROCESSING.vignette.offset;
-    vignettePass.uniforms.darkness.value = POST_PROCESSING.vignette.darkness;
-    this.composer.addPass(vignettePass);
-  }
-
   private async init(): Promise<void> {
     try {
       // Load assets (placeholders for now)
@@ -162,15 +121,12 @@ export class FloorScene {
       // Build floor
       this.buildFloor();
 
-      // Add main scene lighting (ambient + directional + hemisphere)
-      this.addMainLights();
-
       // Create avatars
       this.createAvatars();
 
-      // Setup camera controller
-      this.cameraController.setTarget(this.getOperatorPosition());
-      this.cameraController.setReducedMotion(this.reducedMotion);
+      // Setup camera controller - target center of floor
+      const floorCenter = this.gridToWorld(GRID_W / 2, GRID_H / 2);
+      this.cameraController.setTarget(floorCenter);
 
       // Start status polling
       this.startStatusPolling();
@@ -189,7 +145,6 @@ export class FloorScene {
 
   private async loadAssets(): Promise<void> {
     // For now, use placeholder textures
-    // In production, load from /assets/sprites/
     console.log('Assets loaded (placeholders)');
   }
 
@@ -232,27 +187,23 @@ export class FloorScene {
     // Store holo rings for animation
     this.holoRings = floorGeoms.holoRings;
 
-    // Add zone accent lights
+    // Add lighting for props (floor is unlit)
+    this.addMainLights();
     this.addZoneAccentLights();
   }
 
   private addMainLights(): void {
-    const ambient = new THREE.AmbientLight(LIGHTING.ambient.color, LIGHTING.ambient.intensity);
+    // Strong ambient for props visibility
+    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
     this.scene.add(ambient);
 
-    const dir = new THREE.DirectionalLight(LIGHTING.directional.color, LIGHTING.directional.intensity);
-    dir.position.set(
-      LIGHTING.directional.position[0],
-      LIGHTING.directional.position[1],
-      LIGHTING.directional.position[2]
-    );
+    // Directional light for depth on props
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(200, 400, 200);
     this.scene.add(dir);
 
-    const hemi = new THREE.HemisphereLight(
-      LIGHTING.hemisphere.skyColor,
-      LIGHTING.hemisphere.groundColor,
-      LIGHTING.hemisphere.intensity
-    );
+    // Hemisphere for subtle color variation
+    const hemi = new THREE.HemisphereLight(0x00e5ff, 0xffb700, 0.4);
     this.scene.add(hemi);
   }
 
@@ -260,7 +211,7 @@ export class FloorScene {
     ZONE_KEYS.forEach(key => {
       const zone = ZONES[key];
       const screenPos = this.gridToWorld(zone.x + ZONE_SIZE / 2, zone.y + ZONE_SIZE / 2);
-      const light = new THREE.PointLight(zone.accent, LIGHTING.zoneAccent.intensity, LIGHTING.zoneAccent.distance, LIGHTING.zoneAccent.decay);
+      const light = new THREE.PointLight(zone.accent, 0.5, 200, 2);
       light.position.set(screenPos.x, 50, screenPos.y);
       light.castShadow = false;
       this.floorContainer.add(light);
@@ -268,7 +219,7 @@ export class FloorScene {
 
     // Chief center accent light
     const chiefPos = this.gridToWorld(CHIEF_POS.x, CHIEF_POS.y);
-    const chiefLight = new THREE.PointLight(0xffcc00, 0.5, 150, 2);
+    const chiefLight = new THREE.PointLight(0xffcc00, 0.8, 200, 2);
     chiefLight.position.set(chiefPos.x, 80, chiefPos.y);
     this.floorContainer.add(chiefLight);
   }
@@ -399,7 +350,7 @@ export class FloorScene {
   }
 
   private gridToWorld(gx: number, gy: number): { x: number; y: number; z: number } {
-    const screen = this.floorBuilder.gridToScreen(gx, gy);
+    const screen = gridToScreen(gx, gy);
     return { x: screen.x, y: 0, z: screen.y };
   }
 
@@ -407,25 +358,56 @@ export class FloorScene {
     const op = this.avatarSystem.getAvatar('operator');
     if (op) {
       const worldPos = this.avatarSystem.gridToWorld(op.gridX, op.gridY);
-      return new THREE.Vector3(worldPos.x, 0, worldPos.z);
+      return new THREE.Vector3(worldPos.x, 0, worldPos.y);
     }
     const startPos = this.gridToWorld(OPERATOR_START.x, OPERATOR_START.y);
-    return new THREE.Vector3(startPos.x, 0, startPos.z);
+    return new THREE.Vector3(startPos.x, 0, startPos.y);
+  }
+
+  // Render loop
+  private animate(): void {
+    this.animationId = requestAnimationFrame(() => this.animate());
+
+    const delta = this.clock.getDelta();
+
+    // Update camera controller
+    this.cameraController.update(delta);
+
+    // Animate Chief holographic rings
+    if (this.holoRings) {
+      const t = this.clock.getElapsedTime();
+      this.holoRings.ring1.rotation.z += delta * 0.25;  // gold: slow CW
+      this.holoRings.ring2.rotation.z -= delta * 0.18;  // cyan: CCW
+      this.holoRings.ring3.rotation.z += delta * 0.12;  // purple: slow CW
+      // Subtle vertical bob
+      const bob = Math.sin(t * 0.8) * 1.5;
+      this.holoRings.group.position.y = bob;
+    }
+
+    // Update camera target (follow operator)
+    const opPos = this.getOperatorPosition();
+    this.cameraController.setTarget(opPos);
+
+    // Render
+    this.composer.render(delta);
+  }
+
+  // Resize handler
+  public resize(width: number, height: number): void {
+    const aspect = width / height;
+    const frustumSize = CAMERA_FRUSTUM;
+    this.camera.left = -frustumSize * aspect / 2;
+    this.camera.right = frustumSize * aspect / 2;
+    this.camera.top = frustumSize / 2;
+    this.camera.bottom = -frustumSize / 2;
+    this.camera.updateProjectionMatrix();
+
+    this.renderer.setSize(width, height);
+    this.composer.setSize(width, height);
+    this.cameraController.resize(width, height);
   }
 
   // Public API
-  public setReducedMotion(enabled: boolean): void {
-    this.reducedMotion = enabled;
-    this.cameraController.setReducedMotion(enabled);
-    this.avatarSystem.setReducedMotion(enabled);
-
-    // Update post-processing
-    const bloomPass = (this.composer as any).bloomPass;
-    const scanlinePass = (this.composer as any).scanlinePass;
-    if (bloomPass) bloomPass.enabled = !enabled || !REDUCED_MOTION_DEFAULTS.disableBloom;
-    if (scanlinePass) scanlinePass.enabled = !enabled || !REDUCED_MOTION_DEFAULTS.disableScanlines;
-  }
-
   public selectZone(zoneKey: ZoneKey | 'chief'): void {
     this.selectedZone = zoneKey;
     // Visual feedback
@@ -434,7 +416,7 @@ export class FloorScene {
       material.emissiveIntensity = key === zoneKey ? 0.5 : 0.1;
     });
     if (this.chiefCenterMesh && zoneKey === 'chief') {
-      (this.chiefCenterMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.8;
+      (this.chiefCenterMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.5;
     }
   }
 
@@ -471,54 +453,10 @@ export class FloorScene {
     return this.floorContainer;
   }
 
-  // Render loop
-  private animate(): void {
-    this.animationId = requestAnimationFrame(() => this.animate());
-
-    const delta = this.clock.getDelta();
-
-    // Update camera controller
-    this.cameraController.update(delta);
-
-    // Update avatars
-    this.avatarSystem.update(delta, this.reducedMotion);
-
-    // Animate Chief holographic rings
-    if (this.holoRings) {
-      const t = this.clock.getElapsedTime();
-      this.holoRings.ring1.rotation.z += delta * 0.25;  // gold: slow CW
-      this.holoRings.ring2.rotation.z -= delta * 0.18;  // cyan: CCW
-      this.holoRings.ring3.rotation.z += delta * 0.12;  // purple: slow CW
-      // Subtle vertical bob
-      const bob = Math.sin(t * 0.8) * 1.5;
-      this.holoRings.group.position.y = bob;
-    }
-
-    // Update camera target (follow operator)
-    const opPos = this.getOperatorPosition();
-    this.cameraController.setTarget(opPos);
-
-    // Render
-    this.composer.render(delta);
-  }
-
-  // Resize handler
-  public resize(width: number, height: number): void {
-    const aspect = width / height;
-    const frustumSize = CAMERA_FRUSTUM;
-    this.camera.left = -frustumSize * aspect / 2;
-    this.camera.right = frustumSize * aspect / 2;
-    this.camera.top = frustumSize / 2;
-    this.camera.bottom = -frustumSize / 2;
-    this.camera.updateProjectionMatrix();
-
-    this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
-    this.cameraController.resize(width, height);
-
-    // Update post-processing passes
-    const bloomPass = (this.composer as any).bloomPass;
-    if (bloomPass) bloomPass.setSize(width, height);
+  public setReducedMotion(enabled: boolean): void {
+    this.reducedMotion = enabled;
+    this.cameraController.setReducedMotion(enabled);
+    this.avatarSystem.setReducedMotion(enabled);
   }
 
   // Cleanup

@@ -1,9 +1,9 @@
 /** Camera controller for classic Habbo isometric view (2:1 dimetric).
- *  Camera positioned at ~26.5° elevation (arctan(0.5)) and 45° azimuth
+ *  Camera positioned at ~26.5° elevation (arctan(0.5)) and 225° azimuth (south-west)
  *  so floor tiles appear as 2:1 diamonds, walls are visible, avatars from side. */
 
 import * as THREE from 'three';
-import { CAMERA_DEFAULTS, CAMERA_FRUSTUM, REDUCED_MOTION_DEFAULTS } from '../data/floorConfig.js';
+import { CAMERA_DEFAULTS, CAMERA_FRUSTUM, HABBO_CAM, REDUCED_MOTION_DEFAULTS } from '../data/floorConfig.js';
 
 export interface CameraTarget {
   x: number;
@@ -24,12 +24,6 @@ export class CameraController {
 
   private reducedMotion = false;
   private aspect = 1;
-
-  // Classic Habbo isometric camera offset (2:1 ratio)
-  // Camera at 26.565° elevation (arctan(0.5)), 225° azimuth (south-west)
-  private readonly CAM_DIST = 600;    // distance from target
-  private readonly CAM_HEIGHT = 300;  // CAM_DIST * 0.5 = tan(26.565°)
-  private readonly CAM_OFFSET = 424;  // CAM_DIST * 0.707 = cos(45°)
 
   // Interaction state
   private isDragging = false;
@@ -63,7 +57,7 @@ export class CameraController {
 
   private onWheel(event: WheelEvent): void {
     event.preventDefault();
-    const delta = event.deltaY > 0 ? 1.1 : 1 / 1.1;
+    const delta = event.deltaY > 0 ? 1.15 : 1 / 1.15;
     this.setZoom(this.zoom * delta);
   }
 
@@ -84,11 +78,8 @@ export class CameraController {
     const dx = event.clientX - this.lastMouseX;
     const dy = event.clientY - this.lastMouseY;
 
-    // Pan camera target (inverse because camera moves opposite)
-    // In isometric: screen X maps to world X-Z diagonal, screen Y maps to world Z-X diagonal
+    // Pan camera target - isometric mapping
     const panSpeed = 0.5 / this.zoom;
-    // Right drag -> camera moves left -> target moves right
-    // Screen X -> world (X - Z) axis; Screen Y -> world (X + Z) axis
     this.target.x -= (dx + dy) * panSpeed * 0.5;
     this.target.z -= (dy - dx) * panSpeed * 0.5;
 
@@ -137,11 +128,10 @@ export class CameraController {
     }
 
     // Classic Habbo isometric camera position
-    // Camera at 26.565° elevation (tan=0.5), 225° azimuth (south-west of target)
-    // Position: target + (-CAM_OFFSET, CAM_HEIGHT, CAM_OFFSET)
-    const camX = this.currentTarget.x - this.CAM_OFFSET / this.zoom;
-    const camY = this.CAM_HEIGHT / this.zoom;
-    const camZ = this.currentTarget.z + this.CAM_OFFSET / this.zoom;
+    // Camera at 26.565° elevation, 225° azimuth (south-west of target)
+    const camX = this.currentTarget.x - HABBO_CAM.OFFSET / this.zoom;
+    const camY = HABBO_CAM.HEIGHT / this.zoom;
+    const camZ = this.currentTarget.z + HABBO_CAM.OFFSET / this.zoom;
 
     // Smooth camera movement
     const lerp = this.reducedMotion ? 1 : this.lerpFactor;
@@ -149,7 +139,7 @@ export class CameraController {
     this.camera.position.y += (camY - this.camera.position.y) * lerp;
     this.camera.position.z += (camZ - this.camera.position.z) * lerp;
 
-    // Look at target (straight at ground level)
+    // Look at target (at ground level)
     this.camera.lookAt(this.currentTarget.x, 0, this.currentTarget.z);
 
     // Update zoom
@@ -165,9 +155,9 @@ export class CameraController {
         this.initialized = true;
         this.currentTarget = { ...target };
         this.camera.position.set(
-          target.x - this.CAM_OFFSET,
-          this.CAM_HEIGHT,
-          target.z + this.CAM_OFFSET
+          target.x - HABBO_CAM.OFFSET,
+          HABBO_CAM.HEIGHT,
+          target.z + HABBO_CAM.OFFSET
         );
       }
     }

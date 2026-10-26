@@ -107,19 +107,27 @@ export const AVATAR_COLORS: Record<AvatarType, number> = {
   alpha: 0xffcc00,
 };
 
-// Camera
+// Camera - Classic Habbo isometric view
 export const CAMERA_DEFAULTS = {
   zoom: 1,
-  minZoom: 0.3,
+  minZoom: 0.5,
   maxZoom: 3,
   lerpFactor: 0.08,
-  offsetX: -0.15, // screen fraction
-  offsetY: -0.1,
 };
 
 /** Vertical size of the orthographic frustum in world units.
  *  The full floor spans ~3000 x 1500 world units, so 1800 lets us see the whole floor. */
 export const CAMERA_FRUSTUM = 1800;
+
+// Classic Habbo camera constants
+export const HABBO_CAM = {
+  // Camera distance from target
+  DIST: 700,
+  // Elevation: 26.565° (arctan(0.5)) -> height = DIST * 0.5
+  HEIGHT: 350,
+  // Horizontal offset: 45° azimuth -> DIST * cos(45°) = DIST * 0.707
+  OFFSET: 495,
+};
 
 // Lighting
 export const LIGHTING = {
