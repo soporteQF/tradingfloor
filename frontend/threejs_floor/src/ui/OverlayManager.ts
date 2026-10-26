@@ -283,7 +283,7 @@ export class OverlayManager {
   }
 
   private buildChiefPanelContent(): string {
-    const activeCount = Object.entries(LIVE_DATA.zoneMetrics).filter(([, v]) => v.active).length;
+    const activeCount = Object.entries(LIVE_DATA.zoneMetrics).filter(([, v]) => (v as any).active).length;
     return `<div class="zone-metric"><span class="metric-label">PnL Total</span><span class="metric-value positive">$${LIVE_DATA.pnl.toLocaleString()}</span></div>
             <div class="zone-metric"><span class="metric-label">Trades Today</span><span class="metric-value">${LIVE_DATA.tradesToday}</span></div>
             <div class="zone-metric"><span class="metric-label">Nightly State</span><span class="metric-value">${LIVE_DATA.nightlyState}</span></div>

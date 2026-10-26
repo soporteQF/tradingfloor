@@ -1,7 +1,5 @@
 /** API client for Chief of Staff backend */
 
-import { LIVE_DATA } from '../data/floorConfig';
-
 export interface ChiefStatus {
   nightly: {
     state: 'running' | 'paused' | 'stopped' | 'error';

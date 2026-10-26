@@ -54,7 +54,7 @@ export class FloorScene {
   private selectedZone: ZoneKey | 'chief' | null = null;
 
   // Bound resize handler for proper removal
-  private boundResize = (event: UIEvent) => this.resize(event.currentTarget.innerWidth, event.currentTarget.innerHeight);
+  private boundResize = (event: UIEvent) => this.resize((event.target as Window).innerWidth, (event.target as Window).innerHeight);
 
   constructor(options: FloorSceneOptions) {
     this.reducedMotion = options.reducedMotion || false;

@@ -1,0 +1,44 @@
+# ─── Core runtime ───
+python==3.11.*
+pydantic==2.9.*
+pydantic-settings==2.5.*
+python-dotenv==1.0.*
+
+# ─── API / orchestration ───
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+websockets==13.*
+celery==5.4.*
+redis==5.2.*
+
+# ─── Data ───
+pandas==2.2.*
+numpy==2.1.*
+pyarrow==17.*
+duckdb==1.1.*
+yfinance==0.2.*
+
+# ─── Knowledge graph / vectors ───
+kuzu==0.7.*
+sqlite-vec==0.1.*
+
+# ─── Backtesting / stats ───
+scipy==1.14.*
+statsmodels==0.14.*
+scikit-learn==1.5.*
+
+# ─── HTTP / clients ───
+httpx==0.27.*
+tenacity==9.0.*
+
+# ─── Quality ───
+pytest==8.3.*
+pytest-asyncio==0.24.*
+ruff==0.7.*
+mypy==1.11.*
+
+# ─── Optional (instalar en VPS / research, no obligatorio en laptop) ───
+# vectorbt==0.26.*
+# hmmlearn==0.3.*
+# river==0.21.*
+# deap==1.4.*

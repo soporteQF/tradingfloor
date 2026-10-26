@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS QUANT FLOOR — Habbo Prototype</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0f; overflow: hidden; font-family: 'JetBrains Mono', monospace; color: #e8e8ed; }
+  #app { width: 100vw; height: 100vh; position: relative; z-index: 1; }
+  #app canvas { display: block; }
+  
+  /* Loading screen */
+  #loading { position: fixed; inset: 0; background: #0a0a0f; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; gap: 16px; }
+  .spinner { width: 48px; height: 48px; border: 3px solid #1a1a2e; border-top-color: #00d4aa; border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loadStatus { color: #7a7a8a; font-size: 13px; }
+  #loadError { color: #ff4757; font-size: 12px; margin-top: 16px; display: none; }
+  
+  /* UI Overlays - HIGH Z-INDEX */
+  .overlay { position: fixed; pointer-events: none; z-index: 100; }
+  .top-bar { top: 0; left: 0; right: 0; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: linear-gradient(180deg, rgba(10,10,15,0.95) 0%, transparent 100%); border-bottom: 1px solid #1a1a2e; pointer-events: auto; }
+  .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 16px; }
+  .logo { display: flex; align-items: center; gap: 8px; color: #00d4aa; font-weight: 700; font-size: 14px; }
+  .logo svg { width: 24px; height: 24px; }
+  .regime-badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  .regime-trend_up { background: #00d4aa22; color: #00d4aa; border: 1px solid #00d4aa44; }
+  .regime-trend_down { background: #ff475722; color: #ff4757; border: 1px solid #ff475744; }
+  .regime-range_low_vol { background: #7b68ee22; color: #7b68ee; border: 1px solid #7b68ee44; }
+  .regime-range_high_vol { background: #ffa50222; color: #ffa502; border: 1px solid #ffa50244; }
+  .kill-badge { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .kill-safe { background: #00d4aa22; color: #00d4aa; border: 1px solid #00d4aa44; }
+  .kill-active { background: #ff475722; color: #ff4757; border: 1px solid #ff475744; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .nightly-progress { display: flex; align-items: center; gap: 8px; min-width: 180px; }
+  .progress-bar { flex: 1; height: 6px; background: #1a1a2e; border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #00d4aa, #7b68ee); border-radius: 3px; transition: width 0.3s ease; }
+  .et-clock { color: #7a7a8a; font-size: 12px; font-variant-numeric: tabular-nums; }
+  
+  .minimap { bottom: 20px; right: 20px; width: 220px; height: 160px; background: rgba(10,10,15,0.95); border: 1px solid #1a1a2e; border-radius: 8px; overflow: hidden; pointer-events: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+  .minimap canvas { width: 100%; height: 100%; display: block; }
+  
+  .zone-panel { top: 60px; right: 20px; width: 320px; max-height: 60vh; background: rgba(10,10,15,0.98); border: 1px solid #1a1a2e; border-radius: 10px; padding: 16px; overflow-y: auto; pointer-events: auto; display: none; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+  .zone-panel.open { display: block; animation: slideIn 200ms ease; }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  .zone-panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1a1a2e; }
+  .zone-panel-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; }
+  .zone-color { width: 12px; height: 12px; border-radius: 3px; }
+  .zone-close { background: none; border: none; color: #7a7a8a; cursor: pointer; padding: 4px; font-size: 18px; line-height: 1; }
+  .zone-metric { display: flex; justify-content: space-between; padding: 6px 0; font-size: 12px; border-bottom: 1px solid #1a1a2e; }
+  .zone-metric:last-child { border-bottom: none; }
+  .metric-label { color: #7a7a8a; }
+  .metric-value { color: #e8e8ed; font-weight: 600; }
+  .metric-value.positive { color: #00d4aa; }
+  .metric-value.negative { color: #ff4757; }
+  .zone-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .btn { flex: 1; padding: 10px; border-radius: 6px; font-size: 11px; font-weight: 600; border: none; cursor: pointer; font-family: inherit; transition: all 0.15s; }
+  .btn-primary { background: #00d4aa; color: #0a0a0f; }
+  .btn-primary:hover { background: #00e8bb; }
+  .btn-danger { background: #ff4757; color: white; }
+  .btn-danger:hover { background: #ff6b6b; }
+  .btn-ghost { background: transparent; color: #7a7a8a; border: 1px solid #1a1a2e; }
+  .btn-ghost:hover { background: #1a1a2e; color: #e8e8ed; }
+  
+  .chat-panel { bottom: 20px; left: 20px; width: 380px; height: 320px; background: rgba(10,10,15,0.98); border: 1px solid #1a1a2e; border-radius: 10px; display: flex; flex-direction: column; pointer-events: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+  .chat-header { padding: 12px 16px; border-bottom: 1px solid #1a1a2e; display: flex; align-items: center; justify-content: space-between; }
+  .chat-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 12px; }
+  .chat-avatar { width: 24px; height: 24px; border-radius: 50%; background: #00d4aa22; display: flex; align-items: center; justify-content: center; color: #00d4aa; font-size: 10px; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .chat-msg { display: flex; gap: 8px; max-width: 85%; animation: fadeIn 200ms ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .chat-msg.chief { align-self: flex-start; }
+  .chat-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .chat-bubble { padding: 8px 12px; border-radius: 10px; font-size: 12px; line-height: 1.4; }
+  .chat-msg.chief .chat-bubble { background: #14141c; border: 1px solid #1a1a2e; border-bottom-left-radius: 3px; }
+  .chat-msg.user .chat-bubble { background: #00d4aa; color: #0a0a0f; border-bottom-right-radius: 3px; }
+  .chat-avatar { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; flex-shrink: 0; }
+  .chat-avatar.chief { background: #00d4aa22; color: #00d4aa; }
+  .chat-avatar.user { background: #1a1a2e; color: #e8e8ed; }
+  .chat-input-area { padding: 12px 16px; border-top: 1px solid #1a1a2e; display: flex; gap: 8px; }
+  .chat-input { flex: 1; background: #0a0a0f; border: 1px solid #1a1a2e; border-radius: 6px; padding: 8px 12px; color: #e8e8ed; font-family: inherit; font-size: 12px; outline: none; }
+  .chat-input:focus { border-color: #00d4aa; }
+  .chat-send { background: #00d4aa; color: #0a0a0f; border: none; border-radius: 6px; padding: 8px 16px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  
+  .controls-hint { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 24px; padding: 12px 20px; background: rgba(10,10,15,0.95); border: 1px solid #1a1a2e; border-radius: 8px; font-size: 11px; color: #7a7a8a; pointer-events: none; z-index: 100; }
+  .hint { display: flex; align-items: center; gap: 6px; }
+  .hint kbd { background: #1a1a2e; border: 1px solid #2a2a3a; border-radius: 4px; padding: 2px 6px; font-family: inherit; font-size: 10px; }
+  
+  .reduced-motion-toggle { position: fixed; top: 60px; left: 20px; z-index: 100; pointer-events: auto; }
+  .toggle { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(10,10,15,0.95); border: 1px solid #1a1a2e; border-radius: 6px; font-size: 11px; color: #7a7a8a; cursor: pointer; }
+  .toggle:hover { border-color: #00d4aa; color: #00d4aa; }
+  .toggle input { accent-color: #00d4aa; }
+  
+  @media (prefers-reduced-motion: reduce) {
+    .chat-msg { animation: none; }
+  }
+  
+  /* Debug panel */
+  #debugPanel { position: fixed; top: 60px; right: 20px; width: 300px; max-height: 40vh; background: rgba(10,10,15,0.98); border: 1px solid #1a1a2e; border-radius: 8px; padding: 12px; font-size: 11px; color: #7a7a8a; overflow-y: auto; z-index: 200; display: none; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+  #debugPanel.open { display: block; }
+  .debug-line { padding: 2px 0; font-family: monospace; }
+  .debug-line.error { color: #ff4757; }
+  .debug-line.warn { color: #ffa502; }
+  .debug-line.ok { color: #00d4aa; }
+  
+  /* Avatar labels on canvas (debug) */
+  .avatar-debug-label { position: absolute; font-size: 9px; color: #00d4aa; pointer-events: none; z-index: 50; white-space: nowrap; text-shadow: 0 0 4px #000; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loadStatus">Inicializando PixiJS...</div>
+  <div id="loadError"></div>
+</div>
+
+<div id="app"></div>
+
+<!-- Top Bar -->
+<div class="top-bar overlay">
+  <div class="top-bar-left">
+    <div class="logo">
+      <svg viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="2"/><path d="M30 50 L45 65 L70 35" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      NEXUS QUANT FLOOR
+    </div>
+    <span class="regime-badge regime-trend_up" id="regimeBadge">TREND_UP ▲</span>
+    <span class="kill-badge kill-safe" id="killBadge"><span id="killDot">●</span> GUARDIAN SAFE</span>
+    <div class="nightly-progress">
+      <span style="font-size:11px;color:#7a7a8a;">NIGHTLY</span>
+      <div class="progress-bar"><div class="progress-fill" id="nightlyProgress" style="width: 80%"></div></div>
+      <span id="nightlyPct" style="font-size:11px;color:#00d4aa;">80%</span>
+    </div>
+  </div>
+  <div class="top-bar-right">
+    <span class="et-clock" id="etClock">14:32:15 ET</span>
+  </div>
+</div>
+
+<!-- Minimap -->
+<div class="minimap overlay" id="minimap"><canvas id="minimapCanvas"></canvas></div>
+
+<!-- Zone Panel -->
+<div class="zone-panel overlay" id="zonePanel">
+  <div class="zone-panel-header">
+    <div class="zone-panel-title"><span class="zone-color" id="zonePanelColor"></span><span id="zonePanelTitle">ZONE</span></div>
+    <button class="zone-close" onclick="closeZonePanel()">×</button>
+  </div>
+  <div id="zonePanelContent"></div>
+  <div class="zone-actions" id="zonePanelActions"></div>
+</div>
+
+<!-- Chat Panel -->
+<div class="chat-panel overlay">
+  <div class="chat-header">
+    <div class="chat-title"><div class="chat-avatar chief">🤖</div>CHIEF OF STAFF</div>
+  </div>
+  <div class="chat-messages" id="chatMessages"></div>
+  <div class="chat-input-area">
+    <input type="text" class="chat-input" id="chatInput" placeholder="Type command... (run nightly, kill switch, pause, status)" onkeydown="handleChatKeydown(event)">
+    <button class="chat-send" onclick="sendChat()">Send</button>
+  </div>
+</div>
+
+<!-- Controls Hint -->
+<div class="controls-hint">
+  <div class="hint"><kbd>WASD</kbd> Move operator</div>
+  <div class="hint"><kbd>Click</kbd> Zone to inspect</div>
+  <div class="hint"><kbd>Space</kbd> Focus Chief</div>
+  <div class="hint"><kbd>M</kbd> Toggle minimap</div>
+  <div class="hint"><kbd>R</kbd> Reduced motion</div>
+  <div class="hint"><kbd>D</kbd> Debug panel</div>
+</div>
+
+<!-- Reduced Motion Toggle -->
+<div class="reduced-motion-toggle">
+  <label class="toggle"><input type="checkbox" id="reducedMotionToggle" onchange="toggleReducedMotion(this.checked)"> Reduced Motion</label>
+</div>
+
+<!-- Debug Panel -->
+<div id="debugPanel">
+  <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:700;">
+    <span>DEBUG</span>
+    <button onclick="document.getElementById('debugPanel').classList.toggle('open')" style="background:none;border:none;color:#7a7a8a;cursor:pointer;">×</button>
+  </div>
+  <div id="debugLog"></div>
+</div>
+
+<!-- PixiJS v8 via multiple CDNs with fallback -->
+<script>
+  window.pixiLoaded = false;
+  window.pixiError = null;
+  
+  function loadPixiJS() {
+    const cdns = [
+      'https://cdn.jsdelivr.net/npm/pixi.js@8.1.4/dist/pixi.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/pixi.js/8.1.4/pixi.min.js',
+      'https://unpkg.com/pixi.js@8.1.4/dist/pixi.min.js'
+    ];
+    
+    let current = 0;
+    function tryNext() {
+      if (current >= cdns.length) {
+        logDebug('ERROR: All PixiJS CDNs failed', 'error');
+        document.getElementById('loadStatus').textContent = 'Error cargando PixiJS';
+        document.getElementById('loadError').textContent = 'No se pudo cargar PixiJS. Verifica conexión a internet.';
+        document.getElementById('loadError').style.display = 'block';
+        return;
+      }
+      logDebug(`Cargando PixiJS desde ${cdns[current]}...`);
+      const script = document.createElement('script');
+      script.src = cdns[current];
+      script.onload = () => {
+        window.pixiLoaded = true;
+        logDebug('PixiJS cargado OK ✓', 'ok');
+        document.getElementById('loadStatus').textContent = 'PixiJS listo. Construyendo floor...';
+        setTimeout(initApp, 100);
+      };
+      script.onerror = () => {
+        logDebug(`Fallo CDN ${current + 1}`, 'warn');
+        current++;
+        tryNext();
+      };
+      document.head.appendChild(script);
+    }
+    tryNext();
+  }
+  
+  function logDebug(msg, type = 'info') {
+    const log = document.getElementById('debugLog');
+    const line = document.createElement('div');
+    line.className = `debug-line ${type}`;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+    console.log(`[DEBUG] ${msg}`);
+  }
+  
+  window.logDebug = logDebug;
+  
+  // Start loading PixiJS
+  loadPixiJS();
+</script>
+
+<script>
+// ============================================================
+// HABBO QUANT FLOOR — PIXIJS PROTOTYPE (continúa tras carga)
+// ============================================================
+
+// ============ CONFIG ============
+const TILE_W = 64, TILE_H = 32;
+const GRID_W = 80, GRID_H = 60;
+const ZONE_SIZE = 16;
+const CORRIDOR_W = 4;
+
+const ZONES = {
+  research:    { name: 'RESEARCH',      color: 0x0066ff, accent: 0x0099ff, x: 8,  y: 8,  emoji: '🔬', desc: 'Discovery Lab · Pattern Mine · Hypothesis Queue' },
+  validation:  { name: 'VALIDATION',    color: 0x00ccaa, accent: 0x00ffdd, x: 26, y: 8,  emoji: '⚖️', desc: 'Walk-Forward Chamber · Monte Carlo · Referee' },
+  execution:   { name: 'EXECUTION',     color: 0x00cc66, accent: 0x00ff88, x: 44, y: 8,  emoji: '💰', desc: 'Order Desk · Risk Check · Fill Tracker' },
+  guardian:    { name: 'GUARDIAN',      color: 0xff8800, accent: 0xffaa00, x: 44, y: 36, emoji: '🛡️', desc: 'Shield Vault · 8 Guards · Kill Switch' },
+  regime:      { name: 'REGIME',        color: 0x8844ff, accent: 0xaa66ff, x: 26, y: 36, emoji: '🌊', desc: 'HMM 4-State · Probability Bars · Transitions' },
+  alpha:       { name: 'ALPHA LIBRARY', color: 0xffcc00, accent: 0xffdd44, x: 8,  y: 36, emoji: '🧠', desc: 'Knowledge Graph · Playbooks · Causal Paths' },
+};
+
+const CHIEF_CENTER = { x: 32, y: 22, size: 12 };
+const ENTRANCE = { x: 30, y: 0, w: 20, h: 6 };
+const CORRIDOR_Y = 24;
+const SOUTH_SUPPORT_Y = 48;
+
+const LIVE_DATA = {
+  regime: 'trend_up',
+  killSwitch: false,
+  nightlyProgress: 0.8,
+  nightlyState: 'running',
+  pnl: 12847,
+  tradesToday: 47,
+  guards: [
+    { name: 'Daily Loss', current: 234, limit: 1500, ok: true },
+    { name: 'Trailing DD', current: 8.2, limit: 15, ok: true },
+    { name: 'Contracts', current: 3, limit: 10, ok: true },
+    { name: 'Correlation', current: 0.34, limit: 0.5, ok: true },
+    { name: 'Loss Streak', current: 0, limit: 3, ok: true },
+    { name: 'Trade Freq', current: 12, limit: 50, ok: true },
+    { name: 'Strategy DD', current: 4.1, limit: 10, ok: true },
+    { name: 'Cooldown', current: 0, limit: 1, ok: true },
+  ],
+  zoneMetrics: {
+    research:    { patterns: 847, hypotheses: 12, queue: 5, active: 3 },
+    validation:  { folds: '3/8', passed: 2, failed: 1, mcRunning: true },
+    execution:   { signals: 4, pending: 1, fills: 3, slipBps: 1.2 },
+    guardian:    { alerts: 0, cooldown: false, overrides: 0 },
+    regime:      { state: 'trend_up', confidence: 0.87, nextChange: '~45min' },
+    alpha:       { strategies: 8, insights: 23, errors: 41, queries: 7 },
+  }
+};
+
+// ============ STATE ============
+let app, floorContainer, uiContainer;
+let operatorAvatar, chiefAvatar, agentAvatars = [];
+let currentZone = null;
+let cameraTarget = { x: 0, y: 0 };
+let cameraPos = { x: 0, y: 0 };
+let zoom = 1;
+let reducedMotion = false;
+let minimapVisible = true;
+let chatMessages = [];
+
+// Avatar debug labels (DOM overlay)
+let avatarLabels = {};
+
+// ============ INIT ============
+async function initApp() {
+  try {
+    logDebug('Iniciando PIXI.Application...');
+    app = new PIXI.Application();
+    await app.init({
+      width: window.innerWidth,
+      height: window.innerHeight,
+      backgroundColor: 0x0a0a0f,
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true,
+      antialias: true,
+    });
+    document.getElementById('app').appendChild(app.canvas);
+    app.canvas.style.zIndex = '1'; // Behind overlays
+    logDebug('Canvas añadido al DOM', 'ok');
+    
+    // Hide loading
+    document.getElementById('loading').style.display = 'none';
+    
+    // Containers
+    floorContainer = new PIXI.Container();
+    app.stage.addChild(floorContainer);
+    
+    uiContainer = new PIXI.Container();
+    app.stage.addChild(uiContainer);
+    
+    // Build floor
+    logDebug('Construyendo floor...');
+    buildFloor();
+    
+    // Create avatars
+    logDebug('Creando avatares...');
+    createAvatars();
+    
+    // Create avatar debug labels (DOM)
+    createAvatarLabels();
+    
+    // Setup camera - START AT OPERATOR POSITION
+    cameraTarget.x = operatorAvatar.gridX * TILE_W; // Will be set after avatar creation
+    cameraTarget.y = operatorAvatar.gridY * TILE_H;
+    cameraPos.x = cameraTarget.x;
+    cameraPos.y = cameraTarget.y;
+    
+    // Input
+    setupInput();
+    
+    // Start loops
+    app.ticker.add(gameLoop);
+    startLiveUpdates();
+    
+    // Initial chat
+    addChatMessage('chief', 'Chief of Staff online. Floor operational. All systems nominal.');
+    addChatMessage('chief', 'Commands: "run nightly", "kill switch", "pause", "resume", "status"');
+    
+    // Handle resize
+    window.addEventListener('resize', onResize);
+    
+    logDebug('🏗️ NEXUS QUANT FLOOR prototype ready!', 'ok');
+  } catch (e) {
+    logDebug(`ERROR INICIALIZACIÓN: ${e.message}`, 'error');
+    console.error(e);
+    document.getElementById('loading').style.display = 'flex';
+    document.getElementById('loadStatus').textContent = 'Error de inicialización';
+    document.getElementById('loadError').textContent = e.message;
+    document.getElementById('loadError').style.display = 'block';
+  }
+}
+
+function onResize() {
+  if (app) app.renderer.resize(window.innerWidth, window.innerHeight);
+  // Reposition avatar labels
+  updateAvatarLabels();
+}
+
+// ============ FLOOR BUILDING ============
+function buildFloor() {
+  const graphics = new PIXI.Graphics();
+  floorContainer.addChild(graphics);
+  
+  drawBaseFloor(graphics);
+  Object.entries(ZONES).forEach(([key, zone]) => drawZone(graphics, key, zone));
+  drawChiefCenter(graphics);
+  drawEntrance(graphics);
+  drawCorridor(graphics);
+  drawSouthSupport(graphics);
+  drawZoneLabels();
+  graphics.cacheAsTexture = true;
+  logDebug('Floor construido y cacheado', 'ok');
+}
+
+function drawBaseFloor(g) {
+  g.rect(0, 0, GRID_W * TILE_W, GRID_H * TILE_H);
+  g.fill(0x0a0a0f);
+  g.stroke({ width: 0.5, color: 0x1a1a2e, alpha: 0.3 });
+  for (let gx = 0; gx <= GRID_W; gx++) {
+    const s1 = gridToScreen(gx, 0), s2 = gridToScreen(gx, GRID_H);
+    g.moveTo(s1.x, s1.y).lineTo(s2.x, s2.y);
+  }
+  for (let gy = 0; gy <= GRID_H; gy++) {
+    const s1 = gridToScreen(0, gy), s2 = gridToScreen(GRID_W, gy);
+    g.moveTo(s1.x, s1.y).lineTo(s2.x, s2.y);
+  }
+}
+
+function drawZone(g, key, zone) {
+  const { x, y, color, accent } = zone;
+  const px = x * TILE_W, py = y * TILE_H;
+  const zw = ZONE_SIZE * TILE_W, zh = ZONE_SIZE * TILE_H;
+  
+  const isoPoints = getIsoRect(px, py, zw, zh);
+  g.poly(isoPoints);
+  g.fill({ color, alpha: 0.15 });
+  g.stroke({ width: 2, color: accent, alpha: 0.6 });
+  
+  g.stroke({ width: 0.5, color: accent, alpha: 0.1 });
+  for (let i = 1; i < ZONE_SIZE; i++) {
+    const p1 = gridToScreen(x + i, y), p2 = gridToScreen(x + i, y + ZONE_SIZE);
+    g.moveTo(p1.x, p1.y).lineTo(p2.x, p2.y);
+    const p3 = gridToScreen(x, y + i), p4 = gridToScreen(x + ZONE_SIZE, y + i);
+    g.moveTo(p3.x, p3.y).lineTo(p4.x, p4.y);
+  }
+  drawZoneCorners(g, px, py, zw, zh, accent);
+}
+
+function drawZoneCorners(g, px, py, w, h, color) {
+  const corners = getIsoRect(px, py, w, h);
+  g.stroke({ width: 3, color, alpha: 0.8 });
+  const size = 20;
+  corners.forEach((pt, i) => {
+    const next = corners[(i + 1) % 4];
+    const dx = next.x - pt.x, dy = next.y - pt.y;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const ux = dx / len, uy = dy / len;
+    g.moveTo(pt.x, pt.y).lineTo(pt.x + ux * size, pt.y + uy * size);
+    g.moveTo(next.x, next.y).lineTo(next.x - ux * size, next.y - uy * size);
+  });
+}
+
+function drawChiefCenter(g) {
+  const { x, y, size } = CHIEF_CENTER;
+  const px = x * TILE_W, py = y * TILE_H;
+  const w = size * TILE_W, h = size * TILE_H;
+  
+  const isoPoints = getIsoRect(px, py, w, h);
+  g.poly(isoPoints);
+  g.fill({ color: 0x0d0d12, alpha: 0.9 });
+  g.stroke({ width: 3, color: 0x00d4aa, alpha: 0.8 });
+  
+  const inner = getIsoRect(px + 8, py + 8, w - 16, h - 16);
+  g.poly(inner);
+  g.stroke({ width: 1, color: 0x00d4aa, alpha: 0.4 });
+  
+  const ringRadius = 35;
+  const centerScreen = gridToScreen(x + size/2, y + size/2);
+  drawStatusRing(g, centerScreen.x - 60, centerScreen.y - 50, ringRadius, '#00d4aa', 'PnL');
+  drawStatusRing(g, centerScreen.x + 60, centerScreen.y - 50, ringRadius, '#7b68ee', 'REGIME');
+  drawStatusRing(g, centerScreen.x + 60, centerScreen.y + 50, ringRadius, '#ff8800', 'GUARD');
+  drawStatusRing(g, centerScreen.x - 60, centerScreen.y + 50, ringRadius, '#ffcc00', 'NIGHTLY');
+}
+
+function drawStatusRing(g, cx, cy, r, color, label) {
+  g.stroke({ width: 2, color, alpha: 0.6 });
+  g.circle(cx, cy, r);
+  const text = new PIXI.Text({ text: label, style: { fontFamily: 'JetBrains Mono', fontSize: 9, fill: color, fontWeight: '600' } });
+  text.anchor.set(0.5);
+  text.x = cx; text.y = cy + r + 14;
+  uiContainer.addChild(text);
+}
+
+function drawEntrance(g) {
+  const { x, y, w, h } = ENTRANCE;
+  const px = x * TILE_W, py = y * TILE_H;
+  const ww = w * TILE_W, hh = h * TILE_H;
+  const isoPoints = getIsoRect(px, py, ww, hh);
+  g.poly(isoPoints);
+  g.fill({ color: 0x1a1a2e, alpha: 0.5 });
+  g.stroke({ width: 1, color: 0x2a2a3a, alpha: 0.5 });
+  const center = gridToScreen(x + w/2, y + h/2);
+  const text = new PIXI.Text({ text: 'ENTRANCE / LOBBY', style: { fontFamily: 'JetBrains Mono', fontSize: 10, fill: 0x7a7a8a, fontWeight: '600' } });
+  text.anchor.set(0.5);
+  text.x = center.x; text.y = center.y - 20;
+  uiContainer.addChild(text);
+}
+
+function drawCorridor(g) {
+  const y = CORRIDOR_Y;
+  const px = 0, py = y * TILE_H;
+  const ww = GRID_W * TILE_W, hh = CORRIDOR_W * TILE_H;
+  const isoPoints = getIsoRect(px, py, ww, hh);
+  g.poly(isoPoints);
+  g.fill({ color: 0x0d0d12, alpha: 0.7 });
+  g.stroke({ width: 1, color: 0x00d4aa, alpha: 0.3 });
+  
+  g.stroke({ width: 2, color: 0x00d4aa, alpha: 0.4 });
+  for (let i = 0; i < GRID_W; i += 4) {
+    const p1 = gridToScreen(i, y + 1), p2 = gridToScreen(i, y + CORRIDOR_W - 1);
+    const midX = (p1.x + p2.x) / 2, midY = (p1.y + p2.y) / 2;
+    g.moveTo(midX - 8, midY).lineTo(midX, midY - 4).lineTo(midX + 8, midY);
+    g.moveTo(midX, midY - 4).lineTo(midX, midY + 4);
+  }
+}
+
+function drawSouthSupport(g) {
+  const y = SOUTH_SUPPORT_Y;
+  const h = GRID_H - y;
+  const px = 0, py = y * TILE_H;
+  const ww = GRID_W * TILE_W, hh = h * TILE_H;
+  const isoPoints = getIsoRect(px, py, ww, hh);
+  g.poly(isoPoints);
+  g.fill({ color: 0x0d0d12, alpha: 0.5 });
+  g.stroke({ width: 1, color: 0x2a2a3a, alpha: 0.4 });
+  
+  const labels = [
+    { x: 10, label: 'DATA CENTER\nDuckDB · KuzuDB · Vector' },
+    { x: 32, label: 'INFRA ROOM\nOllama · Redis · Celery' },
+    { x: 54, label: 'OPS DESK\nTickets · Alerts · Deploy' },
+  ];
+  labels.forEach(({ x, label }) => {
+    const center = gridToScreen(x, y + 2);
+    const text = new PIXI.Text({ text: label, style: { fontFamily: 'JetBrains Mono', fontSize: 9, fill: 0x7a7a8a, fontWeight: '500', align: 'center', lineHeight: 14 } });
+    text.anchor.set(0.5);
+    text.x = center.x; text.y = center.y;
+    uiContainer.addChild(text);
+  });
+}
+
+function drawZoneLabels() {
+  Object.entries(ZONES).forEach(([key, zone]) => {
+    const screen = gridToScreen(zone.x + ZONE_SIZE/2, zone.y - 2);
+    const text = new PIXI.Text({ 
+      text: `${zone.emoji}  ${zone.name}`, 
+      style: { fontFamily: 'JetBrains Mono', fontSize: 11, fill: zone.accent, fontWeight: '700', stroke: { color: 0x0a0a0f, width: 3 } } 
+    });
+    text.anchor.set(0.5, 1);
+    text.x = screen.x; text.y = screen.y;
+    uiContainer.addChild(text);
+  });
+  
+  const chiefScreen = gridToScreen(CHIEF_CENTER.x + CHIEF_CENTER.size/2, CHIEF_CENTER.y - 2);
+  const chiefText = new PIXI.Text({ 
+    text: '🎯  CHIEF COMMAND CENTER', 
+    style: { fontFamily: 'JetBrains Mono', fontSize: 12, fill: 0xffcc00, fontWeight: '700', stroke: { color: 0x0a0a0f, width: 3 } } 
+  });
+  chiefText.anchor.set(0.5, 1);
+  chiefText.x = chiefScreen.x; chiefText.y = chiefScreen.y;
+  uiContainer.addChild(chiefText);
+}
+
+// ============ AVATARS ============
+function createAvatars() {
+  // Operator starts NEAR CHIEF so camera sees action immediately
+  operatorAvatar = createHabboAvatar('operator', 0x4488ff);
+  operatorAvatar.gridX = 32;
+  operatorAvatar.gridY = 28;
+  operatorAvatar.targetGridX = 32;
+  operatorAvatar.targetGridY = 28;
+  operatorAvatar.speed = 8;
+  floorContainer.addChild(operatorAvatar);
+  
+  chiefAvatar = createHabboAvatar('chief', 0xffcc00);
+  chiefAvatar.gridX = CHIEF_CENTER.x + CHIEF_CENTER.size/2;
+  chiefAvatar.gridY = CHIEF_CENTER.y + CHIEF_CENTER.size/2;
+  chiefAvatar.targetGridX = chiefAvatar.gridX;
+  chiefAvatar.targetGridY = chiefAvatar.gridY;
+  chiefAvatar.isChief = true;
+  chiefAvatar.breathPhase = Math.random() * Math.PI * 2;
+  floorContainer.addChild(chiefAvatar);
+  
+  Object.entries(ZONES).forEach(([key, zone], i) => {
+    const avatar = createHabboAvatar(key, zone.color);
+    avatar.gridX = zone.x + ZONE_SIZE/2 + (Math.random() - 0.5) * 4;
+    avatar.gridY = zone.y + ZONE_SIZE/2 + (Math.random() - 0.5) * 4;
+    avatar.targetGridX = avatar.gridX;
+    avatar.targetGridY = avatar.gridY;
+    avatar.zoneKey = key;
+    avatar.patrolTimer = Math.random() * 10;
+    avatar.patrolInterval = 8 + Math.random() * 8;
+    agentAvatars.push(avatar);
+    floorContainer.addChild(avatar);
+  });
+  logDebug(`${agentAvatars.length + 2} avatares creados`, 'ok');
+}
+
+function createAvatarLabels() {
+  const allAvatars = [operatorAvatar, chiefAvatar, ...agentAvatars];
+  allAvatars.forEach(av => {
+    const label = document.createElement('div');
+    label.className = 'avatar-debug-label';
+    label.textContent = av.type.toUpperCase();
+    label.style.color = av.isChief ? '#ffcc00' : (av.type === 'operator' ? '#4488ff' : '#00d4aa');
+    document.body.appendChild(label);
+    avatarLabels[av.type] = label;
+  });
+}
+
+function updateAvatarLabels() {
+  const allAvatars = [operatorAvatar, chiefAvatar, ...agentAvatars];
+  allAvatars.forEach(av => {
+    const label = avatarLabels[av.type];
+    if (!label) return;
+    const screen = gridToScreen(av.gridX, av.gridY);
+    // Convert to screen coordinates (accounting for camera transform)
+    const canvasRect = app.canvas.getBoundingClientRect();
+    const x = canvasRect.left + (screen.x - cameraPos.x) * zoom + window.innerWidth/2;
+    const y = canvasRect.top + (screen.y - cameraPos.y) * zoom + window.innerHeight/2 - 60;
+    label.style.left = `${x}px`;
+    label.style.top = `${y}px`;
+  });
+}
+
+function createHabboAvatar(type, color) {
+  const container = new PIXI.Container();
+  container.type = type;
+  container.direction = 'down';
+  container.walkFrame = 0;
+  container.walkTimer = 0;
+  container.isWalking = false;
+  container.bobPhase = Math.random() * Math.PI * 2;
+  container.bobAmount = type === 'chief' ? 2 : 1.5;
+  
+  const body = new PIXI.Graphics();
+  // Head
+  body.roundRect(-12, -36, 24, 24, 6).fill({ color: 0xffe0bd }).stroke({ width: 1, color: 0xccaa88 });
+  body.circle(-6, -28, 2).fill(0x1a1a2e);
+  body.circle(6, -28, 2).fill(0x1a1a2e);
+  // Torso
+  body.roundRect(-16, -12, 32, 28, 4).fill({ color, alpha: 0.9 }).stroke({ width: 1, color: lightenColor(color, 30) });
+  // Legs
+  body.roundRect(-10, 16, 8, 20, 2).fill({ color: 0x1a1a2e });
+  body.roundRect(2, 16, 8, 20, 2).fill({ color: 0x1a1a2e });
+  
+  if (type === 'chief') {
+    body.stroke({ width: 2, color: 0xffcc00, alpha: 0.8 }).roundRect(-18, -38, 36, 56, 8);
+  } else if (type !== 'operator') {
+    body.stroke({ width: 1.5, color: lightenColor(color, 40), alpha: 0.6 }).roundRect(-18, -38, 36, 56, 8);
+  }
+  
+  container.addChild(body);
+  container.body = body;
+  
+  // Selection ring (voice indicator)
+  const ring = new PIXI.Graphics();
+  ring.stroke({ width: 3, color: 0x00d4aa, alpha: 0 }).circle(0, -8, 32);
+  container.addChild(ring);
+  container.selectionRing = ring;
+  
+  // Name label (PixiJS)
+  const nameLabel = new PIXI.Text({ text: type.toUpperCase(), style: { fontFamily: 'JetBrains Mono', fontSize: 9, fill: 0x7a7a8a, fontWeight: '600', stroke: { color: 0x0a0a0f, width: 2 } } });
+  nameLabel.anchor.set(0.5);
+  nameLabel.y = -52;
+  container.addChild(nameLabel);
+  container.nameLabel = nameLabel;
+  
+  return container;
+}
+
+function lightenColor(color, percent) {
+  const r = (color >> 16) & 255, g = (color >> 8) & 255, b = color & 255;
+  const nr = Math.min(255, r + Math.round(255 * percent / 100));
+  const ng = Math.min(255, g + Math.round(255 * percent / 100));
+  const nb = Math.min(255, b + Math.round(255 * percent / 100));
+  return (nr << 16) | (ng << 8) | nb;
+}
+
+// ============ GAME LOOP ============
+function gameLoop(delta) {
+  const dt = delta * (1/60);
+  updateAvatar(operatorAvatar, dt);
+  updateAvatar(chiefAvatar, dt, true);
+  agentAvatars.forEach(a => updateAvatar(a, dt));
+  
+  // Camera follows operator
+  const opScreen = gridToScreen(operatorAvatar.gridX, operatorAvatar.gridY);
+  cameraTarget.x = opScreen.x - window.innerWidth * 0.15;
+  cameraTarget.y = opScreen.y - window.innerHeight * 0.1;
+  
+  const lerpFactor = reducedMotion ? 1 : 0.08;
+  cameraPos.x += (cameraTarget.x - cameraPos.x) * lerpFactor;
+  cameraPos.y += (cameraTarget.y - cameraPos.y) * lerpFactor;
+  
+  floorContainer.position.x = window.innerWidth/2 - cameraPos.x * zoom;
+  floorContainer.position.y = window.innerHeight/2 - cameraPos.y * zoom;
+  floorContainer.scale.set(zoom);
+  
+  uiContainer.position.x = -floorContainer.position.x / zoom;
+  uiContainer.position.y = -floorContainer.position.y / zoom;
+  uiContainer.scale.set(1/zoom);
+  
+  updateMinimap();
+  updateAvatarLabels();
+  updateClock();
+}
+
+function updateAvatar(avatar, dt, isChief = false) {
+  const dx = avatar.targetGridX - avatar.gridX;
+  const dy = avatar.targetGridY - avatar.gridY;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  
+  if (dist > 0.05) {
+    avatar.isWalking = true;
+    const speed = avatar.speed * dt;
+    const moveX = Math.abs(dx) > Math.abs(dy) ? Math.sign(dx) * Math.min(speed, Math.abs(dx)) : dx * (speed / (dist || 1));
+    const moveY = Math.abs(dy) > Math.abs(dx) ? Math.sign(dy) * Math.min(speed, Math.abs(dy)) : dy * (speed / (dist || 1));
+    avatar.gridX += moveX; avatar.gridY += moveY;
+    
+    if (Math.abs(moveX) > Math.abs(moveY)) avatar.direction = moveX > 0 ? 'right' : 'left';
+    else avatar.direction = moveY > 0 ? 'down' : 'up';
+    
+    avatar.walkTimer += dt * 10;
+    if (avatar.walkTimer >= 1) {
+      avatar.walkTimer = 0;
+      avatar.walkFrame = (avatar.walkFrame + 1) % 4;
+      if (!reducedMotion) avatar.body.scale.y = avatar.walkFrame % 2 === 0 ? 1.0 : 0.95;
+    }
+  } else {
+    avatar.isWalking = false;
+    avatar.gridX = avatar.targetGridX; avatar.gridY = avatar.targetGridY;
+    avatar.walkFrame = 0; avatar.body.scale.y = 1;
+  }
+  
+  if (!avatar.isWalking && !reducedMotion) {
+    if (isChief) {
+      avatar.bobPhase += dt * 1.5;
+      avatar.body.y = Math.sin(avatar.bobPhase) * avatar.bobAmount;
+      if (avatar.voiceRingActive) {
+        avatar.voiceRingTimer -= dt;
+        const pulse = Math.sin(avatar.voiceRingTimer * 20) * 0.5 + 0.5;
+        avatar.selectionRing.alpha = pulse * 0.6;
+        avatar.selectionRing.scale.set(1 + pulse * 0.3);
+        if (avatar.voiceRingTimer <= 0) { avatar.voiceRingActive = false; avatar.selectionRing.alpha = 0; avatar.selectionRing.scale.set(1); }
+      }
+    } else {
+      avatar.bobPhase += dt * 3;
+      avatar.body.y = Math.sin(avatar.bobPhase) * avatar.bobAmount;
+    }
+  }
+  
+  if (avatar.zoneKey && !avatar.isWalking) {
+    avatar.patrolTimer -= dt;
+    if (avatar.patrolTimer <= 0) {
+      const zone = ZONES[avatar.zoneKey];
+      avatar.targetGridX = zone.x + ZONE_SIZE/2 + (Math.random() - 0.5) * 8;
+      avatar.targetGridY = zone.y + ZONE_SIZE/2 + (Math.random() - 0.5) * 8;
+      avatar.patrolTimer = avatar.patrolInterval;
+    }
+  }
+  
+  const screen = gridToScreen(avatar.gridX, avatar.gridY);
+  avatar.position.set(screen.x, screen.y);
+}
+
+function gridToScreen(gx, gy) {
+  return { x: (gx - gy) * (TILE_W / 2), y: (gx + gy) * (TILE_H / 2) };
+}
+
+function screenToGrid(sx, sy) {
+  return { x: (sx / (TILE_W/2) + sy / (TILE_H/2)) / 2, y: (sy / (TILE_H/2) - sx / (TILE_W/2)) / 2 };
+}
+
+function getIsoRect(px, py, w, h) {
+  const corners = [
+    gridToScreen(px/TILE_W, py/TILE_H),
+    gridToScreen((px+w)/TILE_W, py/TILE_H),
+    gridToScreen((px+w)/TILE_W, (py+h)/TILE_H),
+    gridToScreen(px/TILE_W, (py+h)/TILE_H),
+  ];
+  return corners.flatMap(p => [p.x, p.y]);
+}
+
+// ============ INPUT ============
+const keys = { w: false, a: false, s: false, d: false };
+function setupInput() {
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (keys.hasOwnProperty(k)) { keys[k] = true; e.preventDefault(); }
+    if (k === ' ') { focusChief(); e.preventDefault(); }
+    if (k === 'm') { toggleMinimap(); }
+    if (k === 'r') { toggleReducedMotion(!reducedMotion); }
+    if (k === 'd') { document.getElementById('debugPanel').classList.toggle('open'); }
+    if (k === 'escape') { closeZonePanel(); }
+  });
+  window.addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (keys.hasOwnProperty(k)) keys[k] = false; });
+  
+  app.canvas.addEventListener('click', e => {
+    if (e.target !== app.canvas) return;
+    const rect = app.canvas.getBoundingClientRect();
+    const sx = (e.clientX - rect.left - floorContainer.position.x) / zoom;
+    const sy = (e.clientY - rect.top - floorContainer.position.y) / zoom;
+    const grid = screenToGrid(sx, sy);
+    
+    const clickedZone = getZoneAt(grid.x, grid.y);
+    if (clickedZone) { openZonePanel(clickedZone); }
+    else if (isInChiefCenter(grid.x, grid.y)) { openZonePanel('chief'); }
+    else {
+      operatorAvatar.targetGridX = Math.max(1, Math.min(GRID_W-1, grid.x));
+      operatorAvatar.targetGridY = Math.max(1, Math.min(GRID_H-1, grid.y));
+    }
+  });
+  
+  setInterval(() => {
+    if (!operatorAvatar.isWalking) {
+      let moved = false;
+      if (keys.w) { operatorAvatar.targetGridY -= 1; moved = true; }
+      if (keys.s) { operatorAvatar.targetGridY += 1; moved = true; }
+      if (keys.a) { operatorAvatar.targetGridX -= 1; moved = true; }
+      if (keys.d) { operatorAvatar.targetGridX += 1; moved = true; }
+      if (moved) {
+        operatorAvatar.targetGridX = Math.max(1, Math.min(GRID_W-1, operatorAvatar.targetGridX));
+        operatorAvatar.targetGridY = Math.max(1, Math.min(GRID_H-1, operatorAvatar.targetGridY));
+      }
+    }
+  }, 100);
+}
+
+function getZoneAt(gx, gy) {
+  for (const [key, zone] of Object.entries(ZONES)) {
+    if (gx >= zone.x && gx < zone.x + ZONE_SIZE && gy >= zone.y && gy < zone.y + ZONE_SIZE) return key;
+  }
+  return null;
+}
+
+function isInChiefCenter(gx, gy) {
+  const { x, y, size } = CHIEF_CENTER;
+  return gx >= x && gx < x + size && gy >= y && gy < y + size;
+}
+
+// ============ ZONE PANEL ============
+function openZonePanel(zoneKey) {
+  currentZone = zoneKey;
+  const panel = document.getElementById('zonePanel');
+  const title = document.getElementById('zonePanelTitle');
+  const colorEl = document.getElementById('zonePanelColor');
+  const content = document.getElementById('zonePanelContent');
+  const actions = document.getElementById('zonePanelActions');
+  
+  if (zoneKey === 'chief') {
+    title.textContent = 'CHIEF COMMAND CENTER';
+    colorEl.style.background = '#ffcc00';
+    content.innerHTML = buildChiefPanelContent();
+    actions.innerHTML = buildChiefPanelActions();
+  } else {
+    const zone = ZONES[zoneKey];
+    const metrics = LIVE_DATA.zoneMetrics[zoneKey];
+    title.textContent = `${zone.emoji}  ${zone.name}`;
+    colorEl.style.background = `#${zone.accent.toString(16).padStart(6, '0')}`;
+    content.innerHTML = buildZonePanelContent(zoneKey, zone, metrics);
+    actions.innerHTML = buildZonePanelActions(zoneKey);
+  }
+  panel.classList.add('open');
+}
+
+function closeZonePanel() { document.getElementById('zonePanel').classList.remove('open'); currentZone = null; }
+
+function buildZonePanelContent(key, zone, metrics) {
+  let html = `<div style="font-size:11px;color:#7a7a8a;margin-bottom:12px;">${zone.desc}</div><div style="display:flex;flex-direction:column;gap:6px;">`;
+  Object.entries(metrics).forEach(([k, v]) => {
+    const label = k.charAt(0).toUpperCase() + k.slice(1).replace(/([A-Z])/g, ' $1');
+    let cls = '';
+    if (typeof v === 'number' && v > 0) cls = 'positive';
+    if (typeof v === 'number' && v < 0) cls = 'negative';
+    html += `<div class="zone-metric"><span class="metric-label">${label}</span><span class="metric-value ${cls}">${v}</span></div>`;
+  });
+  return html + '</div>';
+}
+
+function buildZonePanelActions(key) {
+  if (key === 'chief') return '';
+  return `<button class="btn btn-primary" onclick="runZoneAction('${key}')">Run Cycle</button><button class="btn btn-ghost" onclick="viewZoneDetails('${key}')">Details</button>`;
+}
+
+function buildChiefPanelContent() {
+  return `<div class="zone-metric"><span class="metric-label">PnL Total</span><span class="metric-value positive">$${LIVE_DATA.pnl.toLocaleString()}</span></div><div class="zone-metric"><span class="metric-label">Trades Today</span><span class="metric-value">${LIVE_DATA.tradesToday}</span></div><div class="zone-metric"><span class="metric-label">Nightly State</span><span class="metric-value">${LIVE_DATA.nightlyState}</span></div><div class="zone-metric"><span class="metric-label">Regime</span><span class="metric-value">${LIVE_DATA.regime.toUpperCase()}</span></div><div class="zone-metric"><span class="metric-label">Guardian</span><span class="metric-value ${LIVE_DATA.killSwitch ? 'negative' : 'positive'}">${LIVE_DATA.killSwitch ? 'KILL ACTIVE' : 'SAFE'}</span></div><div class="zone-metric"><span class="metric-label">Active Strategies</span><span class="metric-value">${Object.keys(LIVE_DATA.zoneMetrics).filter(k => LIVE_DATA.zoneMetrics[k].active).length}</span></div>`;
+}
+
+function buildChiefPanelActions() {
+  return `<button class="btn btn-primary" onclick="chiefAction('run_nightly')">▶ Run Nightly Now</button><button class="btn ${LIVE_DATA.killSwitch ? 'btn-ghost' : 'btn-danger'}" onclick="chiefAction('kill_switch')">${LIVE_DATA.killSwitch ? 'Kill Active' : '🚨 Kill Switch'}</button><button class="btn btn-ghost" onclick="chiefAction('pause')">⏸ Pause Nightly</button><button class="btn btn-ghost" onclick="chiefAction('resume')">▶ Resume Nightly</button>`;
+}
+
+function runZoneAction(key) { addChatMessage('user', `Run ${ZONES[key].name} cycle`); addChatMessage('chief', `🔄 ${ZONES[key].name} cycle triggered.`); setTimeout(() => addChatMessage('chief', `✅ ${ZONES[key].name} cycle complete.`), 1500); }
+function viewZoneDetails(key) { addChatMessage('user', `Show ${ZONES[key].name} details`); addChatMessage('chief', `📊 ${ZONES[key].name} details opened in Alpha Library.`); }
+
+function chiefAction(action) {
+  const labels = { run_nightly: 'Run Nightly', kill_switch: 'Kill Switch', pause: 'Pause Nightly', resume: 'Resume Nightly' };
+  addChatMessage('user', labels[action]);
+  if (action === 'kill_switch') { LIVE_DATA.killSwitch = !LIVE_DATA.killSwitch; updateTopBar(); addChatMessage('chief', LIVE_DATA.killSwitch ? '🚨 KILL SWITCH ACTIVATED.' : '✅ Kill switch deactivated.'); chiefAvatar.voiceRingActive = true; chiefAvatar.voiceRingTimer = 2; }
+  else if (action === 'run_nightly') { LIVE_DATA.nightlyState = 'running'; animateNightlyProgress(); addChatMessage('chief', '🌙 Nightly loop started.'); }
+  else if (action === 'pause') { LIVE_DATA.nightlyState = 'paused'; addChatMessage('chief', '⏸ Nightly paused.'); }
+  else if (action === 'resume') { LIVE_DATA.nightlyState = 'running'; addChatMessage('chief', '▶ Nightly resumed.'); }
+  openZonePanel('chief');
+}
+
+function animateNightlyProgress() {
+  let p = 0;
+  const interval = setInterval(() => { p += Math.random() * 0.15; if (p >= 1) { p = 1; clearInterval(interval); LIVE_DATA.nightlyState = 'completed'; addChatMessage('chief', '✅ Nightly completed.'); } LIVE_DATA.nightlyProgress = p; updateTopBar(); }, 500);
+}
+
+// ============ MINIMAP ============
+function updateMinimap() {
+  const canvas = document.getElementById('minimapCanvas');
+  const ctx = canvas.getContext('2d');
+  const scale = 2;
+  canvas.width = 220 * scale; canvas.height = 160 * scale;
+  canvas.style.width = '220px'; canvas.style.height = '160px';
+  ctx.scale(scale, scale);
+  
+  const mmW = 220, mmH = 160;
+  const scaleX = mmW / (GRID_W * TILE_W), scaleY = mmH / (GRID_H * TILE_H);
+  
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0, 0, mmW, mmH);
+  
+  Object.entries(ZONES).forEach(([key, zone]) => {
+    ctx.fillStyle = `#${zone.color.toString(16).padStart(6, '0')}22`;
+    ctx.strokeStyle = `#${zone.accent.toString(16).padStart(6, '0')}`;
+    ctx.lineWidth = 1;
+    const x = zone.x * TILE_W * scaleX, y = zone.y * TILE_H * scaleY;
+    const w = ZONE_SIZE * TILE_W * scaleX, h = ZONE_SIZE * TILE_H * scaleY;
+    ctx.fillRect(x, y, w, h); ctx.strokeRect(x, y, w, h);
+  });
+  
+  ctx.fillStyle = '#ffcc0033'; ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 2;
+  const cx = CHIEF_CENTER.x * TILE_W * scaleX, cy = CHIEF_CENTER.y * TILE_H * scaleY;
+  const cw = CHIEF_CENTER.size * TILE_W * scaleX, ch = CHIEF_CENTER.size * TILE_H * scaleY;
+  ctx.fillRect(cx, cy, cw, ch); ctx.strokeRect(cx, cy, cw, ch);
+  
+  ctx.fillStyle = '#00d4aa11'; ctx.fillRect(0, CORRIDOR_Y * TILE_H * scaleY, mmW, CORRIDOR_W * TILE_H * scaleY);
+  
+  [operatorAvatar, chiefAvatar, ...agentAvatars].forEach(av => {
+    const s = gridToScreen(av.gridX, av.gridY);
+    ctx.fillStyle = av.isChief ? '#ffcc00' : (av.type === 'operator' ? '#4488ff' : '#00d4aa');
+    ctx.beginPath(); ctx.arc(s.x * scaleX, s.y * scaleY, 3, 0, Math.PI * 2); ctx.fill();
+  });
+  
+  const frustumW = (window.innerWidth / zoom) * scaleX, frustumH = (window.innerHeight / zoom) * scaleY;
+  ctx.strokeStyle = '#00d4aa'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.strokeRect(cameraPos.x * scaleX - frustumW/2, cameraPos.y * scaleY - frustumH/2, frustumW, frustumH);
+  ctx.setLineDash([]);
+}
+
+function toggleMinimap() { minimapVisible = !minimapVisible; document.getElementById('minimap').style.display = minimapVisible ? 'block' : 'none'; }
+
+// ============ CHAT ============
+function addChatMessage(role, text) {
+  const container = document.getElementById('chatMessages');
+  const msg = document.createElement('div');
+  msg.className = `chat-msg ${role}`;
+  msg.innerHTML = `<div class="chat-avatar ${role}">${role === 'chief' ? '🤖' : '👤'}</div><div class="chat-bubble">${escapeHtml(text)}</div>`;
+  container.appendChild(msg);
+  container.scrollTop = container.scrollHeight;
+}
+
+function handleChatKeydown(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } }
+
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim(); if (!text) return;
+  input.value = ''; addChatMessage('user', text); processChatCommand(text.toLowerCase());
+}
+
+function processChatCommand(cmd) {
+  if (cmd.includes('kill') || cmd.includes('emergency')) chiefAction('kill_switch');
+  else if (cmd.includes('run nightly') || cmd.includes('nightly now')) chiefAction('run_nightly');
+  else if (cmd.includes('pause')) chiefAction('pause');
+  else if (cmd.includes('resume') || cmd.includes('continue')) chiefAction('resume');
+  else if (cmd.includes('status') || cmd.includes('estado')) addChatMessage('chief', `📊 Regime ${LIVE_DATA.regime.toUpperCase()} | PnL $${LIVE_DATA.pnl.toLocaleString()} | Trades ${LIVE_DATA.tradesToday} | Guardian ${LIVE_DATA.killSwitch ? 'KILL' : 'SAFE'} | Nightly ${LIVE_DATA.nightlyState}`);
+  else if (cmd.includes('promote') || cmd.includes('retire')) addChatMessage('chief', 'Use the Strategies panel to promote/retire.');
+  else addChatMessage('chief', `Commands: run nightly, kill switch, pause, resume, status`);
+}
+
+function escapeHtml(text) { return text.replace(/&/g, '&').replace(/</g, '<').replace(/>/g, '>'); }
+
+// ============ LIVE UPDATES ============
+function startLiveUpdates() {
+  setInterval(() => {
+    LIVE_DATA.pnl += (Math.random() - 0.48) * 50;
+    LIVE_DATA.tradesToday += Math.random() > 0.95 ? 1 : 0;
+    if (Math.random() < 0.001) {
+      const regimes = ['trend_up', 'trend_down', 'range_low_vol', 'range_high_vol'];
+      LIVE_DATA.regime = regimes[Math.floor(Math.random() * regimes.length)];
+      updateTopBar(); addChatMessage('chief', `🌊 Regime: ${LIVE_DATA.regime.toUpperCase()}`); chiefAvatar.voiceRingActive = true; chiefAvatar.voiceRingTimer = 1.5;
+    }
+    if (Math.random() < 0.0005) {
+      const guard = LIVE_DATA.guards[Math.floor(Math.random() * LIVE_DATA.guards.length)];
+      guard.ok = false; addChatMessage('chief', `⚠️ Guardian: ${guard.name} threshold (${guard.current}/${guard.limit})`); setTimeout(() => guard.ok = true, 5000);
+    }
+    updateTopBar();
+  }, 2000);
+  if (LIVE_DATA.nightlyState === 'running') animateNightlyProgress();
+}
+
+function updateTopBar() {
+  const regimeBadge = document.getElementById('regimeBadge');
+  regimeBadge.className = `regime-badge regime-${LIVE_DATA.regime}`;
+  regimeBadge.textContent = LIVE_DATA.regime.toUpperCase().replace('_', ' ') + ' ' + (LIVE_DATA.regime === 'trend_up' ? '▲' : LIVE_DATA.regime === 'trend_down' ? '▼' : '◆');
+  
+  const killBadge = document.getElementById('killBadge'), killDot = document.getElementById('killDot');
+  if (LIVE_DATA.killSwitch) { killBadge.className = 'kill-badge kill-active'; killDot.textContent = '●'; killBadge.childNodes[1].textContent = ' KILL ACTIVE'; }
+  else { killBadge.className = 'kill-badge kill-safe'; killDot.textContent = '●'; killBadge.childNodes[1].textContent = ' GUARDIAN SAFE'; }
+  
+  document.getElementById('nightlyProgress').style.width = `${(LIVE_DATA.nightlyProgress * 100).toFixed(0)}%`;
+  document.getElementById('nightlyPct').textContent = `${(LIVE_DATA.nightlyProgress * 100).toFixed(0)}%`;
+  if (currentZone) openZonePanel(currentZone);
+}
+
+function updateClock() {
+  const now = new Date(); const et = new Date(now.getTime() - 4 * 3600000);
+  document.getElementById('etClock').textContent = et.toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/New_York' }) + ' ET';
+}
+
+// ============ UTILITIES ============
+function focusChief() {
+  cameraTarget.x = gridToScreen(CHIEF_CENTER.x + CHIEF_CENTER.size/2, CHIEF_CENTER.y + CHIEF_CENTER.size/2).x - window.innerWidth * 0.15;
+  cameraTarget.y = gridToScreen(CHIEF_CENTER.x + CHIEF_CENTER.size/2, CHIEF_CENTER.y + CHIEF_CENTER.size/2).y - window.innerHeight * 0.1;
+  zoom = 1.5;
+}
+
+function toggleReducedMotion(enabled) { reducedMotion = enabled; document.getElementById('reducedMotionToggle').checked = enabled; if (enabled) { agentAvatars.forEach(a => a.body.scale.y = 1); chiefAvatar.body.y = 0; } }
+function toggleMinimap() { minimapVisible = !minimapVisible; document.getElementById('minimap').style.display = minimapVisible ? 'block' : 'none'; }
+</script>
+</body>
+</html>

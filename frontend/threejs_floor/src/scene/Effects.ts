@@ -128,12 +128,12 @@ export function createFilmGrainShader(): THREE.ShaderMaterial {
 }
 
 /** Create all effects for the composer */
-export function createEffects(composer: THREE.EffectComposer, size: THREE.Vector2): {
-  bloom: THREE.UnrealBloomPass;
-  scanlines: THREE.ShaderPass;
-  vignette: THREE.ShaderPass;
-  chromatic: THREE.ShaderPass;
-  grain: THREE.ShaderPass;
+export function createEffects(): {
+  bloom: any;
+  scanlines: any;
+  vignette: any;
+  chromatic: any;
+  grain: any;
 } {
   // These are created in FloorScene, exported here for reference
   return {
