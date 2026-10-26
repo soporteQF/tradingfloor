@@ -94,6 +94,11 @@ export class FloorScene {
       2000
     );
 
+    // DEBUG: Force camera to floor center immediately
+    const floorCenter = { x: 0, y: 0, z: 0 };
+    this.camera.position.set(0, 400, 400);
+    this.camera.lookAt(0, 0, 0);
+
     // Floor container (all floor geometry)
     this.floorContainer = new THREE.Group();
     this.floorContainer.name = 'floorContainer';
@@ -127,6 +132,11 @@ export class FloorScene {
       // Setup camera controller - target center of floor
       const floorCenter = this.gridToWorld(GRID_W / 2, GRID_H / 2);
       this.cameraController.setTarget(floorCenter);
+
+      // FORCE camera to correct position immediately (before first render)
+      this.cameraController.update(0);
+      this.camera.position.set(floorCenter.x, 400, floorCenter.z + 400);
+      this.camera.lookAt(floorCenter.x, 0, floorCenter.z);
 
       // Start status polling
       this.startStatusPolling();
