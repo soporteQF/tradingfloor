@@ -1,4 +1,6 @@
-/** Camera controller for isometric orbital + focus */
+/** Camera controller for classic Habbo isometric view (2:1 dimetric).
+ *  Camera positioned at ~26.5° elevation (arctan(0.5)) and 45° azimuth
+ *  so floor tiles appear as 2:1 diamonds, walls are visible, avatars from side. */
 
 import * as THREE from 'three';
 import { CAMERA_DEFAULTS, CAMERA_FRUSTUM, REDUCED_MOTION_DEFAULTS } from '../data/floorConfig.js';
@@ -19,17 +21,20 @@ export class CameraController {
   private minZoom = CAMERA_DEFAULTS.minZoom;
   private maxZoom = CAMERA_DEFAULTS.maxZoom;
   private lerpFactor = CAMERA_DEFAULTS.lerpFactor;
-  private offsetX = CAMERA_DEFAULTS.offsetX;
-  private offsetY = CAMERA_DEFAULTS.offsetY;
 
   private reducedMotion = false;
   private aspect = 1;
+
+  // Classic Habbo isometric camera offset (2:1 ratio)
+  // Camera at 26.565° elevation (arctan(0.5)), 225° azimuth (south-west)
+  private readonly CAM_DIST = 600;    // distance from target
+  private readonly CAM_HEIGHT = 300;  // CAM_DIST * 0.5 = tan(26.565°)
+  private readonly CAM_OFFSET = 424;  // CAM_DIST * 0.707 = cos(45°)
 
   // Interaction state
   private isDragging = false;
   private lastMouseX = 0;
   private lastMouseY = 0;
-  private rotationAngle = 0; // For orbital rotation (optional)
 
   // Focus modes
   private focusMode: 'follow' | 'fixed' | 'chief' = 'follow';
@@ -80,9 +85,12 @@ export class CameraController {
     const dy = event.clientY - this.lastMouseY;
 
     // Pan camera target (inverse because camera moves opposite)
+    // In isometric: screen X maps to world X-Z diagonal, screen Y maps to world Z-X diagonal
     const panSpeed = 0.5 / this.zoom;
-    this.target.x -= dx * panSpeed;
-    this.target.z -= dy * panSpeed;
+    // Right drag -> camera moves left -> target moves right
+    // Screen X -> world (X - Z) axis; Screen Y -> world (X + Z) axis
+    this.target.x -= (dx + dy) * panSpeed * 0.5;
+    this.target.z -= (dy - dx) * panSpeed * 0.5;
 
     this.lastMouseX = event.clientX;
     this.lastMouseY = event.clientY;
@@ -99,8 +107,6 @@ export class CameraController {
     if (event.touches.length === 1) {
       this.lastMouseX = event.touches[0].clientX;
       this.lastMouseY = event.touches[0].clientY;
-    } else if (event.touches.length === 2) {
-      // Pinch zoom - handled by browser usually
     }
   }
 
@@ -110,17 +116,15 @@ export class CameraController {
       const dx = event.touches[0].clientX - this.lastMouseX;
       const dy = event.touches[0].clientY - this.lastMouseY;
       const panSpeed = 0.5 / this.zoom;
-      this.target.x -= dx * panSpeed;
-      this.target.z -= dy * panSpeed;
+      this.target.x -= (dx + dy) * panSpeed * 0.5;
+      this.target.z -= (dy - dx) * panSpeed * 0.5;
       this.lastMouseX = event.touches[0].clientX;
       this.lastMouseY = event.touches[0].clientY;
       this.focusMode = 'fixed';
     }
   }
 
-  private onTouchEnd(): void {
-    // Touch end
-  }
+  private onTouchEnd(): void {}
 
   public update(delta: number): void {
     // Smooth target interpolation
@@ -132,19 +136,20 @@ export class CameraController {
       this.currentTarget = { ...this.target };
     }
 
-    // Apply camera position — straight-down top view (the floor geometry is
-    // already iso-projected into the XZ plane, Habbo-style, so no tilt needed).
-    // The +0.01 z offset avoids the degenerate straight-down lookAt.
-    const camX = this.currentTarget.x;
-    const camY = 400;
-    const camZ = this.currentTarget.z + 0.01;
+    // Classic Habbo isometric camera position
+    // Camera at 26.565° elevation (tan=0.5), 225° azimuth (south-west of target)
+    // Position: target + (-CAM_OFFSET, CAM_HEIGHT, CAM_OFFSET)
+    const camX = this.currentTarget.x - this.CAM_OFFSET / this.zoom;
+    const camY = this.CAM_HEIGHT / this.zoom;
+    const camZ = this.currentTarget.z + this.CAM_OFFSET / this.zoom;
 
-    this.camera.position.x += (camX - this.camera.position.x) * (this.reducedMotion ? 1 : this.lerpFactor);
-    this.camera.position.y += (camY - this.camera.position.y) * (this.reducedMotion ? 1 : this.lerpFactor);
-    this.camera.position.z += (camZ - this.camera.position.z) * (this.reducedMotion ? 1 : this.lerpFactor);
+    // Smooth camera movement
+    const lerp = this.reducedMotion ? 1 : this.lerpFactor;
+    this.camera.position.x += (camX - this.camera.position.x) * lerp;
+    this.camera.position.y += (camY - this.camera.position.y) * lerp;
+    this.camera.position.z += (camZ - this.camera.position.z) * lerp;
 
-    // Look at target
-    this.camera.up.set(0, 1, 0);
+    // Look at target (straight at ground level)
     this.camera.lookAt(this.currentTarget.x, 0, this.currentTarget.z);
 
     // Update zoom
@@ -155,12 +160,15 @@ export class CameraController {
   public setTarget(target: CameraTarget): void {
     if (this.focusMode === 'follow') {
       this.target = { ...target };
-      // Snap on the very first target so the camera starts perfectly framed
-      // (avoids a visible drift-in on load and stale first frames).
+      // Snap on the very first target
       if (!this.initialized) {
         this.initialized = true;
         this.currentTarget = { ...target };
-        this.camera.position.set(target.x, 400, target.z + 0.01);
+        this.camera.position.set(
+          target.x - this.CAM_OFFSET,
+          this.CAM_HEIGHT,
+          target.z + this.CAM_OFFSET
+        );
       }
     }
   }
@@ -189,7 +197,6 @@ export class CameraController {
       this.target = { ...target };
     } else if (mode === 'chief') {
       this.focusMode = 'fixed';
-      // Will be set externally
     } else if (mode === 'follow') {
       this.fixedTarget = null;
     }
@@ -202,7 +209,7 @@ export class CameraController {
   public focusOnChief(chiefPosition: { x: number; y: number; z: number }): void {
     this.focusMode = 'fixed';
     this.target = { x: chiefPosition.x, y: 0, z: chiefPosition.z };
-    this.zoom = 1.5;
+    this.zoom = 1.3;
   }
 
   public resize(width: number, height: number): void {
